@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+
+/src/llm_project/data_files
+/src/llm_project/processed_data
