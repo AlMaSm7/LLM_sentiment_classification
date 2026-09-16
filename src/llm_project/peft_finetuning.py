@@ -1,8 +1,11 @@
 from data_preperation import sentiment_mapping
 import pandas as pd
 import numpy as np
-import torch
 import json
+import argparse
+from datasets import Dataset
+#import transformers
+import transformers
 
 task_prefix = "classify emotions: "
 
@@ -35,4 +38,17 @@ def bilingual_peft(en_path, lan_path, rand_int):
         targets.append(target)
     return inputs, targets
 
-def main()
+def main():
+    #create a parser since we dont want to touch the source code
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--en-train", required=True)
+    parser.add_argument("--sv-train", required=True)
+    parser.add_argument("--output-dir", default="adapters/bilingual")
+    parser.add_argument("--model-id", default="bigscience/mt0-small")
+    parser.add_argument("--epochs", type=int, default=3)
+    parser.add_argument("--seed", type=int, default=42)
+    args = parser.parse_args()
+    
+    inputs, targets = bilingual_peft(args.en_train, args.lan_train, args.seed)
+    dataset = Dataset.from_dict({"input_text": inputs, "target_text": targets})
+    tokenizer = AutoTokenizer.from_pretrained(args.model_id)
