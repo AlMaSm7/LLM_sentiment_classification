@@ -42,7 +42,7 @@ def main():
     #create a parser since we dont want to touch the source code
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--en-train", required=True)
-    parser.add_argument("--sv-train", required=True)
+    parser.add_argument("--lan-train", required=True)
     parser.add_argument("--output-dir", default="adapters/bilingual")
     parser.add_argument("--model-id", default="bigscience/mt0-small")
     parser.add_argument("--epochs", type=int, default=3)
