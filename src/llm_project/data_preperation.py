@@ -1,17 +1,19 @@
 import polars as pl
 from pathlib import Path
 
+sentiment_mapping = {
+    "anger": "1",
+    "anticipation": "2",
+    "disgust": "3",
+    "fear": "4",
+    "joy": "5",
+    "sadness": "6",
+    "surprise": "7",
+    "trust": "8",
+}
+
 def prepare_data(df: pl.DataFrame) -> pl.DataFrame:
-    sentiment_mapping = {
-        "anger": "1",
-        "anticipation": "2",
-        "disgust": "3",
-        "fear": "4",
-        "joy": "5",
-        "sadness": "6",
-        "surprise": "7",
-        "trust": "8",
-    }
+
     
     # Clean whitespace and unseen characters removed. this is logic not data
     clean_labels = (
