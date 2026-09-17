@@ -1,13 +1,32 @@
 # Python-generated files
 __pycache__/
 *.py[oc]
+*.pyc
 build/
 dist/
 wheels/
 *.egg-info
 
-# Virtual environments
-.venv
+# uv environment
+.venv/
 
-/src/llm_project/data_files
-/src/llm_project/processed_data
+# Jupyter
+.ipynb_checkpoints/
+
+# Downloaded / generated data
+data/raw/*
+data/processed/*
+
+# Model outputs
+outputs/models/*
+outputs/predictions/*
+outputs/metrics/*
+
+# Keep placeholder .gitkeep when dir's are empty
+!outputs/models/.gitkeep
+!outputs/predictions/.gitkeep
+!outputs/metrics/.gitkeep
+!data/processed/.gitkeep
+!data/raw/.gitkeep
+!scripts/.gitkeep
+!notebooks/.gitkeep
