@@ -4,8 +4,9 @@ import pandas as pd
 import urllib.request
 from pathlib import Path
 
-os.mkdir("data_files") if not os.path.exists("data_files") else None
+os.mkdir("./src/llm_project/data_files") if not os.path.exists("./src/llm_project/data_files") else None
 
+print("Downloading data...")
 languages = {
     "english_projections": "https://raw.githubusercontent.com/Helsinki-NLP/XED/master/Projections/en-projections.tsv",
     "english": "https://raw.githubusercontent.com/Helsinki-NLP/XED/master/AnnotatedData/en-annotated.tsv",
@@ -17,7 +18,7 @@ languages = {
 print("Downloading data...")
 for language, url in languages.items():
     filename = Path(url).name
-    data_dir = Path("data_files")
+    data_dir = Path("./src/llm_project/data_files")
     destination = data_dir / filename
     print(f"Downloading {language} data to {destination}")
     urllib.request.urlretrieve(url, destination)
