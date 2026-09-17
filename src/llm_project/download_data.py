@@ -10,7 +10,8 @@ languages = {
     "english_projections": "https://raw.githubusercontent.com/Helsinki-NLP/XED/master/Projections/en-projections.tsv",
     "english": "https://raw.githubusercontent.com/Helsinki-NLP/XED/master/AnnotatedData/en-annotated.tsv",
     "swedish": "https://raw.githubusercontent.com/Helsinki-NLP/XED/master/Projections/sv-projections.tsv",
-    "german": "https://raw.githubusercontent.com/Helsinki-NLP/XED/master/Projections/de-projections.tsv"
+    "german": "https://raw.githubusercontent.com/Helsinki-NLP/XED/master/Projections/de-projections.tsv",
+    "nederlands": "https://raw.githubusercontent.com/Helsinki-NLP/XED/master/Projections/nl-projections.tsv"
 }
 
 print("Downloading data...")
