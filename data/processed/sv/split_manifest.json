@@ -1,0 +1,19 @@
+{
+  "seed": 40,
+  "target_language": "sv",
+  "emotions": [
+    "anger",
+    "anticipation",
+    "disgust",
+    "fear",
+    "joy",
+    "sadness",
+    "surprise",
+    "trust"
+  ],
+  "counts": {
+    "train": 1733,
+    "dev": 497,
+    "test": 250
+  }
+}

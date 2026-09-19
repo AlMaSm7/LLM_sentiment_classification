@@ -1,0 +1,58 @@
+For German language:
+
+Loaded 18,657,209 OPUS aligned sentence pairs.
+Initial XED <-> OPUS matches: 1041000
+Dropping 1352 ambiguous target subtitle lines.
+Dropped 2 duplicate English subtitle lines.
+Final matched pairs: 2872
+
+Split validation passed.
+
+Split sizes:
+split
+dev      0.202646
+test     0.100975
+train    0.696379
+Name: proportion, dtype: float64
+
+Emotion prevalence:
+          anger  anticipation   disgust  ...   sadness  surprise     trust
+split                                    ...                              
+dev    0.257732      0.231959  0.144330  ...  0.166667  0.159794  0.161512
+test   0.258621      0.234483  0.144828  ...  0.168966  0.162069  0.162069
+train  0.261500      0.237500  0.146500  ...  0.169500  0.163000  0.164000
+
+[3 rows x 8 columns]
+
+Data preparation complete.
+
+
+------------------------------------------------------
+
+
+For Swedish language:
+
+Loaded 13,871,663 OPUS aligned sentence pairs.
+Initial XED <-> OPUS matches: 830865
+Dropping 1319 ambiguous target subtitle lines.
+Final matched pairs: 2480
+
+Split validation passed.
+
+Split sizes:
+split
+dev      0.200403
+test     0.100806
+train    0.698790
+Name: proportion, dtype: float64
+
+Emotion prevalence:
+          anger  anticipation   disgust  ...   sadness  surprise     trust
+split                                    ...                              
+dev    0.251509      0.239437  0.134809  ...  0.179074  0.169014  0.175050
+test   0.248000      0.236000  0.136000  ...  0.176000  0.168000  0.172000
+train  0.251587      0.239469  0.135603  ...  0.178881  0.169648  0.175418
+
+[3 rows x 8 columns]
+
+Data preparation complete.

@@ -39,8 +39,7 @@ Contains the reusable Python code for the project.
 
 Examples:
 
-- `data_download.py` – download XED data
-- `data_preparation.py` – load, clean, and encode the dataset
+- `data_pipeline.py` – download, clean, and encode XED data
 - `models.py` – model and tokenizer setup
 - `peft_training.py` – LoRA / QLoRA training logic
 - `evaluation.py` – evaluation metrics
