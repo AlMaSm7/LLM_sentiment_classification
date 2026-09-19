@@ -1,24 +1,13 @@
 from pathlib import Path
 
-from llm_project.data_preparation import prepare_directory
-
+from llm_project.data_pipeline import (
+    run_pipeline,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
-PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
-
-
-def main():
-    print("Preparing XED data...")
-
-    prepare_directory(
-        input_dir=RAW_DATA_DIR,
-        output_dir=PROCESSED_DATA_DIR,
-    )
-
-    print("Data preparation complete.")
+CONFIG_PATH = PROJECT_ROOT / "configs" / "data.yaml"
 
 
 if __name__ == "__main__":
-    main()
+    run_pipeline(project_root=PROJECT_ROOT, config_path=CONFIG_PATH)

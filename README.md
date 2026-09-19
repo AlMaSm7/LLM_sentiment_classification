@@ -147,3 +147,28 @@ notebooks/results_analysis.ipynb
 Main rule:
 
 > **Use notebooks for experimentation and analysis, `src/` for reusable code, `scripts/` for complete runs, and `jobs/` for hypercomputer execution.**
+
+## Python Formatting and Linting
+
+The project uses **Ruff** for Python formatting, linting, and import sorting. Ruff is installed as a development dependency and configured in `pyproject.toml`.
+
+Format all Python code:
+
+```bash
+uv run ruff format .
+```
+
+Automatically fix safe linting issues and organize imports:
+
+```bash
+uv run ruff check --fix .
+```
+
+Check that the project is correctly formatted and lint-free without changing files:
+
+```bash
+uv run ruff format --check .
+uv run ruff check .
+```
+
+The shared VS Code configuration in .vscode/settings.json uses Ruff as the default Python formatter and formats Python automatically on save.

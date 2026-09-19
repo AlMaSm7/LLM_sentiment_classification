@@ -1,0 +1,12 @@
+source_language: en
+target_language: de
+
+opus:
+  corpus: OpenSubtitles
+  release: v2018
+
+split:
+  seed: 40
+  train: 0.7
+  dev: 0.2
+  test: 0.1
