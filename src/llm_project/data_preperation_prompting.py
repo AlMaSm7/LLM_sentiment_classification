@@ -1,4 +1,5 @@
 import json
+from numpy import record
 import polars as pl
 from pathlib import Path
 
@@ -154,4 +155,17 @@ if __name__ == "__main__":
         # save jsonl file for each language
         jsonl_file = jsonl_dir / f"{file.stem}.jsonl"
         create_jsonl_file_single_language(df, jsonl_file)
-       
+        
+        # prepare fiveshot and save it to a jsonl file
+        five_shot_jsonl_file = jsonl_dir / f"{file.stem}_five_shot.jsonl"
+        with five_shot_jsonl_file.open("w", encoding="utf-8") as file:
+            # get every 5 rows from the dataframe and create a five-shot example
+            for i in range(0, df.height, 5):
+                five_shot_examples = df[i:i+5].select(["sentence", "target_text"]).to_numpy().tolist()
+                if len(five_shot_examples) < 5:
+                    break  # Skip if there are less than 5 examples left
+                new_example = df[i+5:i+6].select(["sentence", "target_text"]).to_numpy().tolist()
+                if not new_example:
+                    break  # Skip if there are no more examples left
+                record = five_shot_format_instruction_pair(five_shot_examples, new_example[0])
+            file.write(json.dumps(record, ensure_ascii=False) + "\n")
