@@ -1,0 +1,19 @@
+{
+  "seed": 40,
+  "target_language": "de",
+  "emotions": [
+    "anger",
+    "anticipation",
+    "disgust",
+    "fear",
+    "joy",
+    "sadness",
+    "surprise",
+    "trust"
+  ],
+  "counts": {
+    "train": 2000,
+    "dev": 582,
+    "test": 290
+  }
+}

@@ -1,0 +1,47 @@
+experiment:
+  name: "example"
+  seed: 42
+
+model:
+  id: "Qwen/Qwen2.5-7B-Instruct"
+
+peft:
+  method: "lora"
+  rank: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+  lora_alpha: 32
+
+use_wandb: true
+wandb_project: "peft_emotion_classification"
+
+training:
+  learning_rate: 0.0002
+  batch_size: 4
+  gradient_accumulation_steps: 1
+  epochs: 3
+  max_seq_length: 512
+  
+biligual:
+  training_data: "data/processed/train_bilingual.jsonl"
+  dev_data: "data/processed/dev_bilingual.jsonl"
+  test_data: "data/processed/test_bilingual.jsonl"
+
+english_paths: 
+  training_data: "data/processed/train_en.jsonl"
+  dev_data: "data/processed/dev_en.jsonl"
+  test_data: "data/processed/test_en.jsonl"
+
+target_language:
+  training_data: "data/processed/train_de.jsonl"
+  dev_data: "data/processed/dev_de.jsonl"
+  test_data: "data/processed/test_de.jsonl"
+
+
+generation:
+  max_new_tokens: 64
+  do_sample: false
+
+output:
+  root_dir: "outputs/peft"

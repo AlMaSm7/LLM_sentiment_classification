@@ -1,32 +1,41 @@
-# Python-generated files
+# python cache
 __pycache__/
-*.py[oc]
-*.pyc
-build/
-dist/
-wheels/
-*.egg-info
+*.py[cod]
 
-# uv environment
+# virtual environment
 .venv/
 
-# Jupyter
+# tool caches
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+uv.lock
+
+# jupyter cache
 .ipynb_checkpoints/
 
-# Downloaded / generated data
+# XED + OPUS source data can be downloaded/generated again
 data/raw/*
-data/processed/*
+!data/raw/.gitkeep
 
-# Model outputs
-outputs/models/*
-outputs/predictions/*
-outputs/metrics/*
-
-# Keep placeholder .gitkeep when dir's are empty
+# experiment outputs
+outputs/*
+!outputs/.gitkeep
 !outputs/models/.gitkeep
 !outputs/predictions/.gitkeep
 !outputs/metrics/.gitkeep
-!data/processed/.gitkeep
-!data/raw/.gitkeep
-!scripts/.gitkeep
-!notebooks/.gitkeep
+
+# Hugging Face / training caches
+.cache/
+huggingface/
+
+# training logs
+runs/
+wandb/
+
+# os / editor junk
+.DS_Store
+
+# secrets
+.env
+.env.*
