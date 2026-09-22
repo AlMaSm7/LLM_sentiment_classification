@@ -1,0 +1,27 @@
+experiment:
+  name: "mt0_base"
+  seed: 42
+
+model:
+  name: "bigscience/mt0-base"
+
+peft:
+  method: "lora"
+  rank: 32
+  alpha: 64
+  dropout: 0.05
+  target_modules: ["q", "k", "v", "o", "wi_0", "wi_1", "wo"]
+
+training:
+  learning_rate: 0.0003
+  batch_size: 16
+  gradient_accumulation_steps: 1
+  epochs: 10
+  max_seq_length: 256
+
+generation:
+  max_new_tokens: 48
+  do_sample: false
+
+output:
+  root_dir: "outputs/peft"
