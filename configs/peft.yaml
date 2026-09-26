@@ -1,0 +1,33 @@
+experiment:
+  name: "baseline_lora"
+  seed: 42
+
+model:
+  name: "Qwen/Qwen2.5-3B-Instruct"
+
+peft:
+  method: "lora"
+
+  # LoRa params
+  rank: 16
+  alpha: 32
+  dropout: 0.05
+
+  target_modules: ["q_prof", "v_proj"]
+
+training:
+  learning_rate: 0.0002
+  batch_size: 2
+  gradient_accumulation_steps: 2
+  epochs: 1
+  max_seq_length: 256
+
+generation:
+  max_new_tokens: 64
+  batch_size: 8
+
+quantization:
+  enabled: false
+
+output:
+  root_dir: "outputs/peft"
