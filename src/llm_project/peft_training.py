@@ -1,11 +1,11 @@
+import os
 from pathlib import Path
 from typing import Any
 
-import pandas as pd  
-import os
-from datasets import Dataset 
-from peft import LoraConfig, get_peft_model, TaskType
-from transformers import DataCollatorForSeq2Seq, Trainer, TrainingArguments
+import pandas as pd
+from datasets import Dataset
+from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training
+from transformers import BitsAndBytesConfig, DataCollatorForSeq2Seq, Trainer, TrainingArguments
 
 from llm_project.peft_model import build_model_and_tokenizer
 
@@ -16,12 +16,19 @@ def train(
     config: dict[str, Any],
 ):
     """Build the configured model and run the selected PEFT method."""
-    model, tokenizer = build_model_and_tokenizer(config)
+    
     method = config["peft"]["method"].lower()
 
     if method == "lora":
+        model, tokenizer = build_model_and_tokenizer(config)
         return train_lora(model, tokenizer, train_data, dev_data, config)
     if method == "qlora":
+        bnb_config = BitsAndBytesConfig(
+            load_in_8bit=True,
+            llm_int8_threshold=6.0,
+            llm_int8_has_fp16_weight=False,
+        )
+        model, tokenizer = build_model_and_tokenizer(config, bnb_config)
         return train_q_lora(model, tokenizer, train_data, dev_data, config)
 
     raise ValueError("peft.method must be 'lora' or 'qlora'")
@@ -75,39 +82,46 @@ def tokenize_with_chat_template(dictionary: dict, tokenizer) -> dict:
     tokenized["labels"] = tokenized["input_ids"].copy()
     
     return tokenized
-    
 
-def train_q_lora(
-    model: Any,
-    tokenizer: Any,
+def tokenize_row(row, tokenizer) -> dict:
+    return tokenize_with_chat_template(row, tokenizer)
+
+
+def prepare_datasets(
     train_data: pd.DataFrame,
     dev_data: pd.DataFrame,
-    config: dict[str, Any],
-):
-    """Training loop for QLoRA fine-tuning."""
-    raise NotImplementedError("Implement the PEFT training loop or Trainer.")
-
-
-def train_lora(
-    model: Any,
     tokenizer: Any,
-    train_data: pd.DataFrame,
-    dev_data: pd.DataFrame,
     config: dict[str, Any],
-):
-    """Training loop for LoRA fine-tuning."""
-    
-    # 1. Convert DataFrames to Hugging Face Datasets
+) -> tuple[Dataset, Dataset]:
+    """Convert, tokenize, and prepare the training and development datasets."""
     hf_train = Dataset.from_pandas(train_data)
     hf_dev = Dataset.from_pandas(dev_data)
-    
-    # 2. Apply tokenization and remove string columns (Trainer cannot collate strings)
-    hf_train = hf_train.map(lambda row: tokenize_row(row, tokenizer), remove_columns=hf_train.column_names)
-    hf_dev = hf_dev.map(lambda row: tokenize_row(row, tokenizer), remove_columns=hf_dev.column_names)
-    
-    set_wandb(config)
 
-    # 3. Define LoRA Config for Causal LM
+    hf_train = hf_train.map(
+        lambda row: tokenize_row(row, tokenizer),
+        remove_columns=hf_train.column_names,
+    )
+    hf_dev = hf_dev.map(
+        lambda row: tokenize_row(row, tokenizer),
+        remove_columns=hf_dev.column_names,
+    )
+
+    set_wandb(config)
+    return hf_train, hf_dev
+
+
+def _execute_peft_training(
+    model: Any,
+    tokenizer: Any,
+    train_data: pd.DataFrame,
+    dev_data: pd.DataFrame,
+    config: dict[str, Any],
+    is_qlora: bool = False,
+):
+    """Shared training loop logic for both LoRA and QLoRA."""
+    
+    hf_train, hf_dev = prepare_datasets(train_data, dev_data, tokenizer, config)
+    
     lora_config = LoraConfig(
         r=config["peft"]["rank"], 
         lora_alpha=config["peft"]["lora_alpha"], 
@@ -117,11 +131,15 @@ def train_lora(
         task_type=TaskType.CAUSAL_LM
     )
     
+    if is_qlora:
+        model = prepare_model_for_kbit_training(model)
+        
+    # load model
     model = get_peft_model(model, lora_config)
     
     # We want to ignore tokenizer pad token in the loss
     label_pad_token_id = -100
-    
+        
     # Data collator dynamically pads inputs and labels to max batch length
     data_collator = DataCollatorForSeq2Seq(
         tokenizer,
@@ -133,7 +151,7 @@ def train_lora(
     # sets pad token to eos token if not already set (eos is used for Qwen-7B-Chat, end of sequence)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    
+        
     output_dir = config["output"]["root_dir"]
     training_args = TrainingArguments(
         output_dir=output_dir,
@@ -148,7 +166,8 @@ def train_lora(
         eval_strategy="steps", # Updated from deprecated evaluation_strategy
         eval_steps=100,
         load_best_model_at_end=True,
-        report_to="wandb" if config.get("use_wandb", False) else "none"
+        report_to="wandb" if config.get("use_wandb", False) else "none",
+        run_name=config.get("wandb_run_name", "peft_lora_training"),
     )
     
     trainer = Trainer(
@@ -165,6 +184,25 @@ def train_lora(
     # Save the model and tokenizer
     model.save_pretrained(output_dir)
     tokenizer.save_pretrained(output_dir)
-    
-def tokenize_row(row, tokenizer) -> dict:
-        return tokenize_with_chat_template(row, tokenizer)
+
+
+def train_q_lora(
+    model: Any,
+    tokenizer: Any,
+    train_data: pd.DataFrame,
+    dev_data: pd.DataFrame,
+    config: dict[str, Any],
+):
+    """Training loop for QLoRA fine-tuning."""
+    _execute_peft_training(model, tokenizer, train_data, dev_data, config, is_qlora=True)
+
+
+def train_lora(
+    model: Any,
+    tokenizer: Any,
+    train_data: pd.DataFrame,
+    dev_data: pd.DataFrame,
+    config: dict[str, Any],
+):
+    """Training loop for LoRA fine-tuning."""
+    _execute_peft_training(model, tokenizer, train_data, dev_data, config, is_qlora=False)

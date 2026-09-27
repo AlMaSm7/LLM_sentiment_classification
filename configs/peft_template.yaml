@@ -44,4 +44,4 @@ generation:
   do_sample: false
 
 output:
-  root_dir: "outputs/peft"
+  root_dir: "outputs"

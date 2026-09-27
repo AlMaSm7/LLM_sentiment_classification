@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from llm_project.data_pipeline import (
+from llm_project.data_preparation.data_pipeline import (
     run_pipeline,
 )
 

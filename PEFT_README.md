@@ -148,20 +148,15 @@ The shared evaluation module contains example helpers for parsing predictions an
 
 ## Outputs
 
-A useful convention is to keep each run in its own folder:
-
 ```text
-outputs/peft/<run_name>/
+outputs/
+├── models/<run_name>/       # adapter, tokenizer, and Trainer checkpoints
+├── metrics/<run_name>/      # metrics.json
+└── predictions/<run_name>/  # predictions.jsonl and predictions.csv
 ```
 
-For example:
-
-```text
-adapter/
-config_used.yaml
-dev_metrics.json
-dev_predictions.jsonl
-training_summary.json
-```
+The run name is taken from `--run-name`, then `WANDB_NAME`, or generated from
+the PEFT method, language, and condition. The same run name is used for the
+local output directories and the W&B run.
 
 Large checkpoints and experiment outputs should normally stay out of Git.
