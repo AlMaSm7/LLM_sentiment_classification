@@ -1,7 +1,6 @@
-"""Inference and evaluation for PEFT emotion classification."""
-
 import json
 import re
+from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
@@ -15,70 +14,75 @@ from sklearn.metrics import (
     recall_score,
 )
 
-from llm_project.peft_data import (
-    create_user_message,
-)
+from llm_project.constants import EMOTIONS
+from llm_project.utils import load_jsonl
 
-EMOTIONS = [
-    "anger",
-    "anticipation",
-    "disgust",
-    "fear",
-    "joy",
-    "sadness",
-    "surprise",
-    "trust",
-]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-def parse_labels(
-    text: str,
-) -> list[str]:
-    """Extract allowed emotion labels from generated text."""
+def get_evaluation_paths(
+    language: str,
+    condition: str,
+    split: str,
+) -> dict[str, Path]:
+    """Find datasets used for evaluation."""
 
-    match = re.search(
-        r"\[[^\]]*\]",
-        text,
-    )
+    data_dir = PROJECT_ROOT / "data" / "processed" / language
+
+    # Target-only training is evaluated on the target language
+    if condition == "target":
+        return {language: data_dir / f"{split}_{language}.jsonl"}
+
+    # English-only and bilingual models are evaluated on English AND the target language
+    return {
+        "en": data_dir / f"{split}_en.jsonl",
+        language: data_dir / f"{split}_{language}.jsonl",
+    }
+
+
+def create_prompt(
+    example: dict[str, Any],
+) -> str:
+    """Create the user prompt."""
+
+    return f"{example['instruction']}\n\nText:\n{example['input']}"
+
+
+def parse_labels(text: str) -> list[str]:
+    """Extract valid emotion labels from model output."""
+
+    match = re.search(r"\[[^\]]*\]", text)
 
     if match is None:
         return []
 
     try:
         labels = json.loads(match.group())
-
     except json.JSONDecodeError:
         return []
 
-    if not isinstance(
-        labels,
-        list,
-    ):
+    if not isinstance(labels, list):
         return []
 
-    return [label for label in labels if (isinstance(label, str) and label in EMOTIONS)]
+    return [label for label in labels if isinstance(label, str) and label in EMOTIONS]
 
 
 def labels_to_binary(
-    label_sets: list[list[str]],
+    labels: list[list[str]],
 ) -> np.ndarray:
-    """Convert emotion names to binary vectors."""
+    """Convert emotion names into binary vectors."""
 
-    return np.asarray(
-        [[int(emotion in labels) for emotion in EMOTIONS] for labels in label_sets],
-        dtype=int,
-    )
+    return np.asarray([[int(emotion in row) for emotion in EMOTIONS] for row in labels])
 
 
 def compute_metrics(
-    gold: list[list[str]],
-    predicted: list[list[str]],
+    true_labels: list[list[str]],
+    predictions: list[list[str]],
 ) -> dict[str, Any]:
-    """Calculate the required multi-label metrics."""
+    """Calculate required multi-label metrics."""
 
-    y_true = labels_to_binary(gold)
-
-    y_pred = labels_to_binary(predicted)
+    y_true = labels_to_binary(true_labels)
+    y_pred = labels_to_binary(predictions)
 
     emotion_f1 = np.asarray(
         f1_score(
@@ -148,28 +152,28 @@ def compute_metrics(
     }
 
 
-@torch.inference_mode()
-def evaluate(
-    model: Any,
-    tokenizer: Any,
+@torch.inference_mode()  # PyTorch doesn't store gradient information with this
+def evaluate_dataset(
+    model,
+    tokenizer,
     dataset: Dataset,
-    batch_size: int,
-    max_length: int,
-    max_new_tokens: int,
-) -> tuple[
-    dict[str, Any],
-    list[dict[str, Any]],
-]:
+    config: dict[str, Any],
+) -> dict[str, Any]:
     """Generate predictions and calculate metrics."""
 
     tokenizer.padding_side = "left"
+    model.config.use_cache = True
+    model.eval()
 
     rows = cast(
         list[dict[str, Any]],
         list(dataset),
     )
 
+    true_labels = []
     predictions = []
+
+    batch_size = config["generation"]["batch_size"]
 
     for start in range(
         0,
@@ -183,7 +187,7 @@ def evaluate(
                 [
                     {
                         "role": "user",
-                        "content": (create_user_message(example)),
+                        "content": create_prompt(example),
                     }
                 ],
                 tokenize=False,
@@ -197,7 +201,7 @@ def evaluate(
             return_tensors="pt",
             padding=True,
             truncation=True,
-            max_length=max_length,
+            max_length=config["training"]["max_seq_length"],
             add_special_tokens=False,
         )
 
@@ -205,12 +209,13 @@ def evaluate(
 
         generated = model.generate(
             **inputs,
-            max_new_tokens=(max_new_tokens),
+            max_new_tokens=config["generation"]["max_new_tokens"],
             do_sample=False,
-            pad_token_id=(tokenizer.pad_token_id),
-            eos_token_id=(tokenizer.eos_token_id),
+            pad_token_id=tokenizer.pad_token_id,
+            eos_token_id=tokenizer.eos_token_id,
         )
 
+        # remove the prompt tokens and only keep the generated answer
         generated = generated[:, inputs["input_ids"].shape[1] :]
 
         texts = tokenizer.batch_decode(
@@ -223,18 +228,68 @@ def evaluate(
             texts,
             strict=True,
         ):
-            predictions.append(
-                {
-                    "input": (example["input"]),
-                    "gold": (parse_labels(example["output"])),
-                    "prediction": (parse_labels(text)),
-                    "raw_prediction": (text),
-                }
-            )
+            true_labels.append(parse_labels(example["output"]))
 
-    metrics = compute_metrics(
-        gold=[row["gold"] for row in predictions],
-        predicted=[row["prediction"] for row in predictions],
+            predictions.append(parse_labels(text))
+
+    return compute_metrics(
+        true_labels,
+        predictions,
     )
 
-    return metrics, predictions
+
+def evaluate_model(
+    model,
+    tokenizer,
+    language: str,
+    condition: str,
+    config: dict[str, Any],
+    split: str = "dev",
+) -> dict[str, Any]:
+    """Evaluate and save results."""
+
+    paths = get_evaluation_paths(
+        language,
+        condition,
+        split,
+    )
+
+    all_metrics = {}
+
+    for eval_language, path in paths.items():
+        print(f"Evaluating: {eval_language}")
+        print(f"Taking {path}")
+
+        dataset = load_jsonl(path)
+
+        all_metrics[eval_language] = evaluate_dataset(
+            model,
+            tokenizer,
+            dataset,
+            config,
+        )
+
+    metrics_dir = (
+        PROJECT_ROOT / "outputs" / "metrics" / language / condition / config["experiment"]["name"]
+    )
+
+    metrics_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    output_path = metrics_dir / f"{split}_metrics.json"
+
+    with output_path.open(
+        "w",
+        encoding="utf-8",
+    ) as file:
+        json.dump(
+            all_metrics,
+            file,
+            indent=2,
+        )
+
+    print(f"Metrics saved: {output_path}")
+
+    return all_metrics

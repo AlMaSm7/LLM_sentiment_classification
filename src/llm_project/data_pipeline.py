@@ -11,27 +11,7 @@ from iterstrat.ml_stratifiers import (
     MultilabelStratifiedShuffleSplit,
 )
 
-EMOTION_MAP = {
-    # "0": "neutral",
-    "1": "anger",
-    "2": "anticipation",
-    "3": "disgust",
-    "4": "fear",
-    "5": "joy",
-    "6": "sadness",
-    "7": "surprise",
-    "8": "trust",
-}
-
-EMOTIONS = list(EMOTION_MAP.values())
-
-INSTRUCTION = (
-    "Identify all emotions expressed in the text. "
-    "Return only a JSON list using one or more of these labels: "
-    "anger, anticipation, disgust, fear, joy, sadness, surprise, trust."
-)
-
-XED_BASE_URL = "https://raw.githubusercontent.com/Helsinki-NLP/XED/master/Projections"
+from llm_project.constants import EMOTION_MAP, EMOTIONS, INSTRUCTION, XED_BASE_URL
 
 
 # load the config .yaml file
@@ -241,7 +221,7 @@ def load_opus_pairs(
     df["english_sentence"] = source_sentences
     df["target_sentence"] = target_sentences
 
-    # Unique ID for the English side of the aligned subtitle.
+    # unique ID for the English side of the aligned subtitle.
     df["alignment_id"] = df["source_document"] + "#" + df["source_sentence_id"]
 
     df["english_key"] = df["english_sentence"].apply(normalize_text)

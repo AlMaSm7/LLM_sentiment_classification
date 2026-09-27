@@ -17,17 +17,15 @@ peft:
 
 training:
   learning_rate: 0.0002
-  batch_size: 2
-  gradient_accumulation_steps: 2
-  epochs: 1
-  max_seq_length: 256
+  batch_size: 8
+  gradient_accumulation_steps: 8
+  epochs: 6
+  max_seq_length: 512
+  bf16: true
+
+eval:
+  batch_size: 32 # evaluation doesn't calculate gradients, so it can use a larger batch size
 
 generation:
-  max_new_tokens: 64
   batch_size: 8
-
-quantization:
-  enabled: false
-
-output:
-  root_dir: "outputs/peft"
+  max_new_tokens: 64
