@@ -118,9 +118,7 @@ def load_xed_projection(
     conflicting_keys = set(label_counts[label_counts > 1].index)
 
     if conflicting_keys:
-        print(
-            f"Dropping {len(conflicting_keys)} target sentences with conflicting labels."
-        )
+        print(f"Dropping {len(conflicting_keys)} target sentences with conflicting labels.")
         df = df[~df["target_key"].isin(conflicting_keys)]
 
     # identical sentence + identical labels -> keep one copy
@@ -155,12 +153,8 @@ def create_opus_pairs(
     pair_dir.mkdir(parents=True, exist_ok=True)
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    source_file = (
-        pair_dir / f"{source_language}-{target_language}.{source_language}.txt"
-    )
-    target_file = (
-        pair_dir / f"{source_language}-{target_language}.{target_language}.txt"
-    )
+    source_file = pair_dir / f"{source_language}-{target_language}.{source_language}.txt"
+    target_file = pair_dir / f"{source_language}-{target_language}.{target_language}.txt"
     ids_file = pair_dir / f"{source_language}-{target_language}.ids.tsv"
 
     if source_file.exists() and target_file.exists() and ids_file.exists():

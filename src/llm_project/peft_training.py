@@ -16,15 +16,23 @@ def resolve_dataset_paths(
         suffix = language
     elif condition == "bilingual":
         suffix = "bilingual"
+    elif condition == "mixed":
+        suffix = "mixed"
     else:
-        raise ValueError("condition must be 'english', 'target', or 'bilingual'")
+        raise ValueError("condition must be 'english', 'target', 'bilingual', or 'mixed'")
 
     data_dir = project_root / "data" / "processed" / language
 
+    # "mixed" has no dedicated dev/test file (evaluation always uses the
+    # per-language dev_en/dev_<language> files directly). Reuse bilingual's
+    # dev/test here only as a placeholder for the Trainer's per-epoch check.
+    dev_suffix = "bilingual" if condition == "mixed" else suffix
+    test_suffix = "bilingual" if condition == "mixed" else suffix
+
     return (
         data_dir / f"train_{suffix}.jsonl",
-        data_dir / f"dev_{suffix}.jsonl",
-        data_dir / f"test_{suffix}.jsonl",
+        data_dir / f"dev_{dev_suffix}.jsonl",
+        data_dir / f"test_{test_suffix}.jsonl",
     )
 
 

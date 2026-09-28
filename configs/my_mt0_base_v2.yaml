@@ -12,6 +12,8 @@ peft:
   dropout: 0.05
   target_modules: ["q", "k", "v", "o", "wi_0", "wi_1", "wo"]
   use_dora: true
+  #q, k, v, o = the four matrices inside attention (query, key, value, output)
+  #wi_0, wi_1, wo = the three matrices inside the feed-forward network (FFN)
 
 training:
   learning_rate: 0.0003

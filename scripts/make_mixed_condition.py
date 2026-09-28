@@ -28,8 +28,10 @@ def make_mixed(language: str, split: str, seed: int):
     common_ids = sorted(set(en_by_id) & set(tgt_by_id))
     missing = (set(en_by_id) | set(tgt_by_id)) - set(common_ids)
     if missing:
-        print(f"[{split}] Warning: {len(missing)} alignment_ids not present in both "
-              f"languages, skipping those.")
+        print(
+            f"[{split}] Warning: {len(missing)} alignment_ids not present in both "
+            f"languages, skipping those."
+        )
 
     rng = random.Random(seed)
     mixed = []
