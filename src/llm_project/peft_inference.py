@@ -1,10 +1,10 @@
-"""Inference utilities for trained PEFT models."""
-
 import json
 from pathlib import Path
 from typing import Any
 
 import torch
+
+from llm_project.constants import INSTRUCTION
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -18,13 +18,7 @@ def predict(
 ) -> str:
     """Predict emotions for one sentence."""
 
-    instruction = (
-        "Identify all emotions expressed in the text. "
-        "Return only a JSON list using one or more of these labels: "
-        "anger, anticipation, disgust, fear, joy, sadness, surprise, trust."
-    )
-
-    message = f"{instruction}\n\nText:\n{text}"
+    message = f"{INSTRUCTION}\n\nText:\n{text}"
 
     prompt = tokenizer.apply_chat_template(
         [
