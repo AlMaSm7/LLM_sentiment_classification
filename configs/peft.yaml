@@ -1,5 +1,5 @@
 experiment:
-  name: "baseline_lora"
+  name: "baseline_qlora" # change for wandb run name
   seed: 42
 
 model:
@@ -9,7 +9,7 @@ use_wandb: true
 wandb_project: "peft_emotion_classification"
 
 peft:
-  method: "lora"
+  method: "qlora" # change to qlora / lora if needed
 
   # LoRa params
   rank: 16
