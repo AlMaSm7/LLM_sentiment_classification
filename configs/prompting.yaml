@@ -1,0 +1,37 @@
+experiment:
+  name: phase2_prompting
+
+language: sv            # assigned language
+dtype: bfloat16
+
+data:
+  dir: data/processed/{lang}
+  train_en: train_en.jsonl
+  train_target: train_{lang}.jsonl
+  dev:
+    en: dev_en.jsonl          # adjust if your English dev file lives elsewhere
+    target: dev_{lang}.jsonl
+  test:
+    en: test_en.jsonl
+    target: test_{lang}.jsonl
+
+models:
+  - name: Qwen/Qwen2.5-3B-Instruct   # same model as in configs/peft.yaml
+    role: primary
+  - name: utter-project/EuroLLM-9B-Instruct
+    role: second
+    # generation:
+    #   chat_template_kwargs: {enable_thinking: false}   # e.g. for Qwen3 models
+
+prompting:
+  id_key: alignment_id                # the alignment-ID field in your jsonl rows
+  five_shot_ids: ["en/1965/59309/6919338.xml.gz#613", "en/1965/59170/6988018.xml.gz#301", "en/2012/1829012/5779744.xml.gz#1405", "en/1954/46816/4245477.xml.gz#659", "en/2016/4608880/6586358.xml.gz#12"]         # fill in from: python scripts/run_prompting.py --select-ids
+  selection:
+    k: 5
+    seed: 42
+    min_words: 5
+    max_words: 20
+
+generation:
+  max_new_tokens: 64
+  batch_size: 8             # set to 1 for strictly reproducible greedy outputs
