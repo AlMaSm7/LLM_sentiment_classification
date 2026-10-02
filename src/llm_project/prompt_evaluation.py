@@ -10,13 +10,14 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import numpy as np
-from llm_project.prompting import LABELS, ParsedOutput
 from sklearn.metrics import (
     f1_score,
     multilabel_confusion_matrix,
     precision_recall_fscore_support,
 )
 from sklearn.preprocessing import MultiLabelBinarizer
+
+from llm_project.prompting import LABELS, ParsedOutput
 
 
 def _binarise(gold, pred):
@@ -84,4 +85,3 @@ def confusion_matrices(gold, pred) -> dict[str, dict[str, int]]:
         label: dict(zip(["tn", "fp", "fn", "tp"], map(int, mats[i].ravel())))
         for i, label in enumerate(LABELS)
     }
-    

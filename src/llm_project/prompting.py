@@ -28,15 +28,7 @@ LABELS: list[str] = [
 _LABEL_SET = frozenset(LABELS)
 _LABEL_LINE = ", ".join(LABELS)
 
-# ---------------------------------------------------------------------------
-# 1. Prompt templates
-# ---------------------------------------------------------------------------
-# One English instruction is used for BOTH English and assigned-language texts.
-# "default" is the main condition. The other variants exist only for the
-# wording-sensitivity analysis on the DEV set. Every variant satisfies all
-# requirements: it names the eight labels, says one or several may apply, and
-# asks for a JSON list of the English label names only.
-
+#dictionary of four instructions, default is the actual experimental prompt
 INSTRUCTION_VARIANTS: dict[str, str] = {
     "default": (
         "Classify the emotions expressed in the text.\n\n"
@@ -74,7 +66,7 @@ INSTRUCTION_VARIANTS: dict[str, str] = {
 }
 DEFAULT_VARIANT = "default"
 
-
+#no duplicates, important for ico learning
 def format_labels(labels: Sequence[str]) -> str:
     """Canonical JSON rendering of a label set (fixed label order, no duplicates)."""
     wanted = set(labels)
@@ -100,7 +92,7 @@ def build_five_shot_prompt(
     lines += ["Now classify this text.", "", f"Text: {text}", "Labels:"]
     return "\n".join(lines)
 
-
+#given the condition zero/five --> calls the right builder
 def build_prompt(
     text: str,
     condition: str,
@@ -115,7 +107,8 @@ def build_prompt(
         return build_five_shot_prompt(text, examples, variant)
     raise ValueError(f"Unknown condition: {condition}")
 
-
+#turn the instructions into one string, hash it and return the first 16 hex digits. 
+# this is used to check that the instructions were not changed after evaluation.
 def prompt_fingerprint() -> str:
     """Hash of all templates. Store it with dev and test results to show the
     prompts were not changed after test evaluation."""
@@ -233,6 +226,7 @@ def select_five_shot_ids(
     rng = random.Random(seed)
     emotions = rng.sample(LABELS, k)
 
+    #tryouts for the training items, only allowed if the ID exists in target
     candidates = []
     for r in train_en:
         rid = r[id_key]
@@ -252,7 +246,7 @@ def select_five_shot_ids(
         chosen.append(rng.choice(pool))
     return chosen
 
-
+#returns the demonstrations as {"id", "text", "labels"} dictionaries.
 def build_examples(ids: Sequence, rows: Sequence[dict], id_key: str) -> list[dict]:
     """Turn fixed IDs into demonstrations from ONE language's train set."""
     by_id = {r[id_key]: r for r in rows}
