@@ -1,3 +1,4 @@
+import ast
 import json
 import warnings
 
@@ -14,6 +15,21 @@ from sklearn.metrics import (
 from sklearn.preprocessing import MultiLabelBinarizer
 
 from llm_project.constants import EMOTIONS
+
+
+def ensure_list(val) -> list[str]:
+    """Safely converts string representations (JSON or Python literals) to a list."""
+    if isinstance(val, list):
+        return val
+    if isinstance(val, str):
+        try:
+            return ast.literal_eval(val)
+        except (ValueError, SyntaxError):
+            try:
+                return json.loads(val)
+            except json.JSONDecodeError:
+                return []
+    return []
 
 
 def check_if_malformed(raw_prediction: str) -> bool:
@@ -80,11 +96,11 @@ def calculate_multi_label_metrics(
 
 def evaluate_results_dataframe(results_df: pd.DataFrame) -> dict:
     """
-    Extracts lists from the live DataFrame and computes metrics.
+    Safely extracts lists from the DataFrame and computes metrics.
     """
-    y_true = results_df["true_labels"].tolist()
-    y_pred = results_df["normalized_prediction"].tolist()
-
+    y_true = results_df["true_labels"].apply(ensure_list).tolist()
+    y_pred = results_df["normalized_prediction"].apply(ensure_list).tolist()
+    
     malformed_count = int(results_df["prediction"].apply(check_if_malformed).sum())
-
+    
     return calculate_multi_label_metrics(y_true, y_pred, malformed_count)
