@@ -1,2 +1,4 @@
 model:
-  name: "Qwen/Qwen2.5-3B-Instruct" # test 3B and 7B models  
+  name: "Qwen/Qwen2.5-7B-Instruct" # test 3B and 7B models  
+
+artifact_setting: "7B" # for naming of output artifacts

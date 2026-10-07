@@ -2,7 +2,7 @@
 
 #SBATCH --job-name=prompting
 #SBATCH --array=0-1
-#SBATCH --time=01:00:00
+#SBATCH --time=03:00:00
 #SBATCH --partition=gpu
 #SBATCH --gpus-per-node=a100:1
 #SBATCH --cpus-per-task=4

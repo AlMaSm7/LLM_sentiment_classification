@@ -78,6 +78,7 @@ def main():
     # update config with command-line arguments
     config["language"] = args.language
     config["target"] = args.target
+    artifact_name = config["artifact_setting"]
 
     if "run" not in config:
         config["run"] = {}
@@ -101,14 +102,14 @@ def main():
     results_dir = PROJECT_ROOT / "outputs" / "predictions" / "prompting" / f"{args.mode}"
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    csv_path = results_dir / f"{args.split}_predictions.csv"
+    csv_path = results_dir / f"{args.split}_{artifact_name}_predictions.csv"
     results_df.to_csv(csv_path, index=False)
 
     print(f"Predictions saved to {csv_path}")
 
     metrics = evaluate_results_dataframe(results_df)
 
-    metrics_path = results_dir / f"{args.split}_metrics.json"
+    metrics_path = results_dir / f"{args.split}_{artifact_name}_metrics.json"
     with metrics_path.open("w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=4)
 
