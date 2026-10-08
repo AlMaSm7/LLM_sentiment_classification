@@ -109,7 +109,7 @@ def main() -> None:
         },
     )
     print("2. Loading data")
-    train_data, dev_data = load_training_data(
+    train_data, dev_data, test_data = load_training_data(
         language=args.language,
         condition=args.condition,
     )
@@ -177,6 +177,7 @@ def main() -> None:
     print("8. Running inference")
 
     examples = get_inference_examples(args.language)
+    
 
     predictions = run_inference(
         model=model,
@@ -185,6 +186,7 @@ def main() -> None:
         language=args.language,
         condition=args.condition,
         config=config,
+        dataset=test_data
     )
 
     for result in predictions:
