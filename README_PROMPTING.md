@@ -121,7 +121,7 @@ uv run python scripts/run_prompting.py \
 Available arguments:
 
 - `--language`: `de` or `sv`; selects the processed-data directory.
-- `--target` (also accepted as `--condition`): `english` or `target`; selects English or language-specific input files.
+- `--target` (also accepted as `--condition`): `english`, `de`, or `sv`; selects the input-language files.
 - `--split`: `dev` or `test`; defaults to `dev`.
 - `--mode`: `zero_shot` or `five_shot`.
 
@@ -130,7 +130,7 @@ For example, German target-language data uses:
 ```bash
 uv run python scripts/run_prompting.py \
   --language de \
-  --target target \
+  --target de \
   --split test \
   --mode five_shot
 ```
@@ -166,9 +166,9 @@ The IDs must exist in the selected training JSONL file. The current command-line
 | CLI values | Files loaded |
 |---|---|
 | `--language de --target english` | `data/processed/de/*_en.jsonl` |
-| `--language de --target target` | `data/processed/de/*_de.jsonl` |
+| `--language de --target de` | `data/processed/de/*_de.jsonl` |
 | `--language sv --target english` | `data/processed/sv/*_en.jsonl` |
-| `--language sv --target target` | `data/processed/sv/*_sv.jsonl` |
+| `--language sv --target sv` | `data/processed/sv/*_sv.jsonl` |
 
 Each split loads `train`, `dev`, and `test`; only the requested `dev` or `test` DataFrame is evaluated. The training DataFrame is needed for five-shot demonstrations.
 

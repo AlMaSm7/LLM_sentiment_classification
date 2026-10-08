@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
         "--target",
         "--condition",
         dest="target",
-        choices=["english", "target"],
+        choices=["english", "de", "sv"],
         required=True,
     )
 
@@ -51,12 +51,7 @@ def get_data_sets(
     Loads the training, development, and test datasets for inference as DataFrames.
     """
     base_dir = PROJECT_ROOT / "data" / "processed" / language
-    target_language = language if target == "target" else "en"
-
-    if target == "bilingual":
-        data_suffix = "bilingual"
-    else:
-        data_suffix = target_language
+    data_suffix = "en" if target == "english" else target
 
     train_data = load_jsonl(base_dir / f"train_{data_suffix}.jsonl").to_pandas()
     dev_data = load_jsonl(base_dir / f"dev_{data_suffix}.jsonl").to_pandas()
@@ -102,14 +97,14 @@ def main():
     results_dir = PROJECT_ROOT / "outputs" / "predictions" / "prompting" / f"{args.mode}"
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    csv_path = results_dir / f"{args.split}_{artifact_name}_predictions.csv"
+    csv_path = results_dir / f"{args.split}_{artifact_name}_{args.target}_predictions.csv"
     results_df.to_csv(csv_path, index=False)
 
     print(f"Predictions saved to {csv_path}")
 
     metrics = evaluate_results_dataframe(results_df)
 
-    metrics_path = results_dir / f"{args.split}_{artifact_name}_metrics.json"
+    metrics_path = results_dir / f"{args.split}_{artifact_name}_{args.target}_metrics.json"
     with metrics_path.open("w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=4)
 

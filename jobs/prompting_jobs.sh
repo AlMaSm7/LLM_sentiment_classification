@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name=prompting
-#SBATCH --array=0-1
+#SBATCH --array=0-7
 #SBATCH --time=03:00:00
 #SBATCH --partition=gpu
 #SBATCH --gpus-per-node=a100:1
@@ -25,12 +25,16 @@ fi
 module load CUDA/12.1.1
 source .venv/bin/activate
 
-# Permutations of Language, Target, and Mode
+# Permutations of dataset language, target language, and prompting mode.
 EXPERIMENTS=(
     "de english zero_shot"
     "de english five_shot"
-    "de target zero_shot"
-    "de target five_shot"
+    "de de zero_shot"
+    "de de five_shot"
+    "sv english zero_shot"
+    "sv english five_shot"
+    "sv sv zero_shot"
+    "sv sv five_shot"
 )
 
 # Parse the three variables for the current array task
@@ -42,7 +46,7 @@ echo "Language: $LANGUAGE"
 echo "Target Dataset: $TARGET"
 echo "Mode: $MODE"
 
-# Execute the python script with the new mode argument
+# Execute the Python script with the selected experiment.
 uv run python scripts/run_prompting.py \
     --language "$LANGUAGE" \
     --target "$TARGET" \

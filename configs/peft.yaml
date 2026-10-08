@@ -1,5 +1,5 @@
 experiment:
-  name: "baseline_qlora" # change for wandb run name
+  name: "baseline_qlora_with_artifact" # change for wandb run name
   seed: 42
 
 model:
