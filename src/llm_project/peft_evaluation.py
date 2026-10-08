@@ -1,3 +1,4 @@
+import datetime
 import json
 import re
 from pathlib import Path
@@ -277,8 +278,9 @@ def evaluate_model(
         parents=True,
         exist_ok=True,
     )
-
-    output_path = metrics_dir / f"{split}_metrics.json"
+    # generate a timestamp for the metrics file
+    time_stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    output_path = metrics_dir / f"{split}_{time_stamp}_metrics.json"
 
     with output_path.open(
         "w",

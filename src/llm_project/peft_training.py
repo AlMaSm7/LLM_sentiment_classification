@@ -29,7 +29,7 @@ def load_config() -> dict[str, Any]:
         return yaml.safe_load(file)
 
 
-def get_training_paths(
+def get_data_paths(
     language: str,
     condition: str,
 ) -> tuple[Path, Path]:
@@ -48,27 +48,30 @@ def get_training_paths(
 
     train_path = data_dir / f"train_{suffix}.jsonl"
     dev_path = data_dir / f"dev_{suffix}.jsonl"
+    test_path = data_dir / f"test_{suffix}.jsonl"
 
-    return train_path, dev_path
+    return train_path, dev_path, test_path
 
 
 def load_training_data(
     language: str,
     condition: str,
-) -> tuple[Dataset, Dataset]:
+) -> tuple[Dataset, Dataset, Dataset]:
     """Load raw train and development datasets."""
 
-    train_path, dev_path = get_training_paths(
+    train_path, dev_path, test_path = get_data_paths(
         language,
         condition,
     )
 
     print(f"Train data: {train_path}")
     print(f"Dev data:   {dev_path}")
+    print(f"Test data:  {test_path}")
 
     return (
         load_jsonl(train_path),
         load_jsonl(dev_path),
+        load_jsonl(test_path),
     )
 
 
