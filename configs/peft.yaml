@@ -10,11 +10,13 @@ wandb_project: "peft_emotion_classification"
 
 peft:
   method: "qlora" # change to qlora / lora if needed
-
+  quantization:
+    quant_type: "nf4"
+    double_quant: true
   # LoRa params
-  rank: 16
-  alpha: 32
-  dropout: 0.05
+  # rank: 16
+  # alpha: 32
+  # dropout: 0.05
 
   target_modules: ["q_proj", "v_proj"]
 

@@ -94,7 +94,7 @@ def build_model(
                 dtype=dtype,
             )
         case "qlora":
-            # TODO: Add configurations to yaml
+            # TODO: Add configurations to yaml, is this todo anymore no
             bnb_config = BitsAndBytesConfig(
                 load_in_8bit=True,
                 llm_int8_threshold=6.0,
@@ -105,10 +105,7 @@ def build_model(
             )
             model = prepare_model_for_kbit_training(model)
         case _:
-            model = AutoModelForCausalLM.from_pretrained(
-                config["model"]["name"],
-                dtype=dtype,
-            )
+            raise ValueError(f"Unknown peft.method: {config['peft']['method']!r}")
 
     lora_config = LoraConfig(
         task_type=TaskType.CAUSAL_LM,
