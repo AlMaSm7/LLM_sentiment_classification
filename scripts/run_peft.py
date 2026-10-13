@@ -92,6 +92,7 @@ def main() -> None:
 
     wandb.init(
         project=config["wandb_project"],
+        mode="online" if config.get("use_wandb", True) else "disabled",
         name=run_name,
         config={
             "language": args.language,

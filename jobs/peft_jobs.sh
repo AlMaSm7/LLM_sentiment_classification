@@ -12,7 +12,7 @@
 
 
 # CHANGE TO YOUR USER
-cd /scratch/s6866425/llm_project
+cd "$SLURM_SUBMIT_DIR"
 
 
 if [[ -f .env ]]; then
@@ -30,16 +30,17 @@ nvidia-smi
 # Load CUDA for PyTorch / GPU training
 module load CUDA/12.1.1
 
-source .venv/bin/activate
+source /scratch/$USER/.llm/bin/activate
+export HF_HOME=/scratch/$USER/hf_cache
 
 # All six experiments.
 EXPERIMENTS=(
-    "de english"
-    "de target"
-    "de bilingual"
+    # "de english"
+    # "de target"
+    # "de bilingual"
     "sv english"
     "sv target"
-    "sv bilingual"
+    # "sv bilingual"
 )
 
 # Pick the experiment belonging to this array task.
@@ -55,6 +56,6 @@ echo "Language:  $LANGUAGE"
 echo "Condition: $CONDITION"
 
 
-uv run python scripts/run_peft.py \
+python scripts/run_peft.py \
     --language "$LANGUAGE" \
     --condition "$CONDITION"
