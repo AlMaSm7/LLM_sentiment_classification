@@ -5,7 +5,7 @@
 #                                  sbatch jobs/run_prompting.sh test
 #SBATCH --job-name=prompting
 #SBATCH --partition=gpu
-#SBATCH --gpus-per-node=1
+#SBATCH --gpus-per-node=a100:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --time=06:00:00
