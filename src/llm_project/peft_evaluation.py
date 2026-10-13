@@ -158,6 +158,7 @@ def evaluate_dataset(
     tokenizer,
     dataset: Dataset,
     config: dict[str, Any],
+    predictions_path: Path | None = None,
 ) -> dict[str, Any]:
     """Generate predictions and calculate metrics."""
 
@@ -172,6 +173,7 @@ def evaluate_dataset(
 
     true_labels = []
     predictions = []
+    records = []
 
     batch_size = config["generation"]["batch_size"]
 
@@ -231,7 +233,20 @@ def evaluate_dataset(
             true_labels.append(parse_labels(example["output"]))
 
             predictions.append(parse_labels(text))
-
+            records.append(
+                {
+                    "alignment_id": example.get("alignment_id"),
+                    "text": example.get("input", ""),
+                    "gold": example["output"],
+                    "raw_output": text,
+                }
+            )
+    if predictions_path is not None:
+        predictions_path.parent.mkdir(parents=True, exist_ok=True)
+        with predictions_path.open("w", encoding="utf-8") as file:
+            for record in records:
+                file.write(json.dumps(record, ensure_ascii=False) + "\n")
+        print(f"Predictions saved: {predictions_path}")
     return compute_metrics(
         true_labels,
         predictions,
@@ -262,11 +277,22 @@ def evaluate_model(
 
         dataset = load_jsonl(path)
 
+        model_tag = config["model"]["name"].split("/")[-1]
+        predictions_path = (
+            PROJECT_ROOT
+            / "outputs"
+            / "predictions"
+            / "peft_raw"
+            / split
+            / f"{model_tag}__{eval_language}__peft-{condition}__{config['experiment']['name']}.jsonl"
+        )
+
         all_metrics[eval_language] = evaluate_dataset(
             model,
             tokenizer,
             dataset,
             config,
+            predictions_path=predictions_path,
         )
 
     metrics_dir = (

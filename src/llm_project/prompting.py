@@ -32,7 +32,7 @@ LABELS: list[str] = [
 _LABEL_SET = frozenset(LABELS)
 _LABEL_LINE = ", ".join(LABELS)
 
-#dictionary of four instructions, default is the actual experimental prompt
+# dictionary of four instructions, default is the actual experimental prompt
 INSTRUCTION_VARIANTS: dict[str, str] = {
     "default": (
         "Classify the emotions expressed in the text.\n\n"
@@ -70,7 +70,8 @@ INSTRUCTION_VARIANTS: dict[str, str] = {
 }
 DEFAULT_VARIANT = "default"
 
-#no duplicates, important for ico learning
+
+# no duplicates, important for ico learning
 def format_labels(labels: Sequence[str]) -> str:
     """Canonical JSON rendering of a label set (fixed label order, no duplicates)."""
     wanted = set(labels)
@@ -96,7 +97,8 @@ def build_five_shot_prompt(
     lines += ["Now classify this text.", "", f"Text: {text}", "Labels:"]
     return "\n".join(lines)
 
-#given the condition zero/five --> calls the right builder
+
+# given the condition zero/five --> calls the right builder
 def build_prompt(
     text: str,
     condition: str,
@@ -111,7 +113,8 @@ def build_prompt(
         return build_five_shot_prompt(text, examples, variant)
     raise ValueError(f"Unknown condition: {condition}")
 
-#turn the instructions into one string, hash it and return the first 16 hex digits. 
+
+# turn the instructions into one string, hash it and return the first 16 hex digits.
 # this is used to check that the instructions were not changed after evaluation.
 def prompt_fingerprint() -> str:
     """Hash of all templates. Store it with dev and test results to show the
@@ -262,7 +265,9 @@ def select_covering_ids(
             # Leave room for the reserved single-label slots.
             multi_slots = slots_left - singles_needed
             need = -(-max(0, len(uncovered) - singles_needed) // multi_slots)
-        pool = [c for c in pool if len(c[1] & uncovered) >= need and (c[1] & uncovered or not uncovered)]
+        pool = [
+            c for c in pool if len(c[1] & uncovered) >= need and (c[1] & uncovered or not uncovered)
+        ]
 
         if not pool:
             raise ValueError("Cannot cover all labels with these filters; relax them or raise k.")
@@ -275,6 +280,7 @@ def select_covering_ids(
     if uncovered:
         raise ValueError(f"Labels left uncovered: {sorted(uncovered)}")
     return [rid for rid, _ in chosen]
+
 
 # Returns the demonstrations as {"id", "text", "labels"} dictionaries.
 def build_examples(ids: Sequence, rows: Sequence[dict], id_key: str) -> list[dict]:

@@ -260,7 +260,7 @@ def train_model(
         bf16=config["training"]["bf16"],
         seed=config["experiment"]["seed"],
         save_total_limit=2,  # keep two checkpoints in total
-        report_to="wandb" if config["use_wandb"] else None,
+        report_to="wandb" if config["use_wandb"] else "none",
         run_name=experiment,
     )
 
