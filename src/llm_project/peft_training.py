@@ -20,13 +20,11 @@ from transformers import (
     TrainingArguments,
 )
 
-from llm_project.utils import (
-    PROJECT_ROOT,
-    build_prompt,
-    get_processed_path,
-    load_jsonl_dataset,
-    save_json,
-)
+from llm_project.utils.data_io import get_processed_path, load_jsonl_dataset, save_json
+from llm_project.utils.model_helpers import sync_special_tokens
+from llm_project.utils.prompts import build_prompt
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def get_training_paths(
@@ -187,21 +185,6 @@ def load_tokenizer(
     return tokenizer
 
 
-def sync_special_tokens(
-    model,
-    tokenizer,
-) -> None:
-    """Synchronize tokenizer and model special tokens."""
-
-    model.config.pad_token_id = tokenizer.pad_token_id
-    model.config.eos_token_id = tokenizer.eos_token_id
-    model.config.bos_token_id = tokenizer.bos_token_id
-
-    model.generation_config.pad_token_id = tokenizer.pad_token_id
-    model.generation_config.eos_token_id = tokenizer.eos_token_id
-    model.generation_config.bos_token_id = tokenizer.bos_token_id
-
-
 def build_model(
     config: dict[str, Any],
 ):
@@ -344,7 +327,15 @@ def get_model_dir(
 ) -> Path:
     """Return the model output directory."""
 
-    return PROJECT_ROOT / "outputs" / "models" / language / condition / config["experiment"]["name"]
+    return (
+        PROJECT_ROOT
+        / "outputs"
+        / "peft"
+        / "models"
+        / language
+        / condition
+        / config["experiment"]["name"]
+    )
 
 
 def train_model(

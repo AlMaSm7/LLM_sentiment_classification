@@ -5,15 +5,13 @@ from typing import Any
 import yaml
 from datasets import Dataset, load_dataset
 
-from llm_project.constants import INSTRUCTION
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 def load_yaml(
     path: Path,
 ) -> dict[str, Any]:
-    """Load a YAML configuration file."""
+    """Load a YAML file."""
 
     with path.open(
         "r",
@@ -27,7 +25,7 @@ def get_processed_path(
     split: str,
     variant: str,
 ) -> Path:
-    """Return the path to a processed dataset."""
+    """Return a processed dataset path."""
 
     return PROJECT_ROOT / "data" / "processed" / language / f"{split}_{variant}.jsonl"
 
@@ -50,7 +48,7 @@ def load_jsonl_dataset(
 def load_jsonl_records(
     path: Path,
 ) -> list[dict[str, Any]]:
-    """Load JSONL as Python dictionaries."""
+    """Load JSONL as normal Python dictionaries."""
 
     if not path.exists():
         raise FileNotFoundError(path)
@@ -66,7 +64,7 @@ def save_json(
     data: Any,
     path: Path,
 ) -> None:
-    """Save data as formatted JSON."""
+    """Save data as JSON."""
 
     path.parent.mkdir(
         parents=True,
@@ -83,12 +81,3 @@ def save_json(
             indent=2,
             ensure_ascii=False,
         )
-
-
-def build_prompt(
-    text: str,
-    instruction: str = INSTRUCTION,
-) -> str:
-    """Create the emotion-classification prompt."""
-
-    return f"{instruction}\n\nText:\n{text}"

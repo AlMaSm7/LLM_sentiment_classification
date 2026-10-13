@@ -1,0 +1,77 @@
+models:
+  primary:
+    name: "Qwen/Qwen2.5-7B-Instruct"
+    trust_remote_code: false
+
+  secondary:
+    name: "microsoft/Phi-3.5-mini-instruct"
+    trust_remote_code: false
+
+generation:
+  batch_size: 8
+  max_seq_length: 1024
+  max_new_tokens: 64
+  do_sample: false
+  bf16: true
+
+prompt:
+  selected: "v1"
+
+  variants:
+    v1: |
+      You are performing multi-label emotion classification.
+
+      Identify all emotions expressed in the given text.
+      One or several emotions may apply.
+
+      The only permitted emotion labels are:
+      anger, anticipation, disgust, fear, joy, sadness, surprise, trust.
+
+      Return only a valid JSON list containing the applicable English label names.
+      Do not use any labels outside the permitted set.
+      Do not explain your answer.
+      Do not translate the text.
+      Do not output anything before or after the JSON list.
+
+    v2: |
+      Task: classify the emotional content of the given text.
+
+      Select one or more labels exclusively from the following set:
+      anger, anticipation, disgust, fear, joy, sadness, surprise, trust.
+
+      Output requirements:
+      - Return a JSON list only.
+      - Every item in the list must be one of the permitted English emotion labels.
+      - Use lowercase label names exactly as written above.
+      - Do not include explanations, translations, comments, or additional text.
+      - Do not include duplicate labels.
+
+      Your entire response must consist only of the JSON list.
+few_shot:
+  seed: 42
+
+  selection_procedure: >
+    Five alignment IDs were randomly sampled with seed 42 from the
+    training-set alignment IDs available in both English and the target
+    language. Development and test data were not used for demonstration
+    selection.
+
+  de:
+    - "en/1990/100469/6936851.xml.gz#697"
+    - "en/1954/46816/4023453.xml.gz#290"
+    - "en/1954/46754/3224582.xml.gz#107"
+    - "en/1990/100625/4175940.xml.gz#463"
+    - "en/1965/59309/6919338.xml.gz#2100"
+
+  sv:
+    - "en/2012/1822302/6406444.xml.gz#479"
+    - "en/1954/46816/4245477.xml.gz#683"
+    - "en/1954/46754/6980377.xml.gz#1488"
+    - "en/2015/4428184/6361946.xml.gz#745"
+    - "en/1990/100212/6671913.xml.gz#1392"
+
+wandb:
+  enabled: false
+  project: "LLM_sentiment_classification"
+  entity: null
+  mode: "online"

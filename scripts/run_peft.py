@@ -1,6 +1,7 @@
 """Run one PEFT experiment."""
 
 import argparse
+from pathlib import Path
 
 from llm_project.peft_evaluation import (
     evaluate_model,
@@ -13,8 +14,7 @@ from llm_project.peft_training import (
     save_model,
     train_model,
 )
-from llm_project.utils import (
-    PROJECT_ROOT,
+from llm_project.utils.data_io import (
     load_yaml,
 )
 from llm_project.wandb_utils import (
@@ -22,6 +22,8 @@ from llm_project.wandb_utils import (
     init_wandb,
     log_metrics,
 )
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def parse_args() -> argparse.Namespace:

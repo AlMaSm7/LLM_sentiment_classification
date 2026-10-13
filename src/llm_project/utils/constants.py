@@ -13,6 +13,8 @@ EMOTIONS = [
 
 EMOTION_MAP = {str(index + 1): emotion for index, emotion in enumerate(EMOTIONS)}
 
+
+# hardcoded in .yaml - this is an old version
 INSTRUCTION = (
     "Identify all emotions expressed in the text. "
     "Return only a JSON list using one or more of these labels: "

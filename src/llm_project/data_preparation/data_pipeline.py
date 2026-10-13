@@ -11,7 +11,7 @@ from iterstrat.ml_stratifiers import (
     MultilabelStratifiedShuffleSplit,
 )
 
-from llm_project.constants import EMOTION_MAP, EMOTIONS, INSTRUCTION, XED_BASE_URL
+from llm_project.utils.constants import EMOTION_MAP, EMOTIONS, INSTRUCTION, XED_BASE_URL
 
 
 # load the config .yaml file

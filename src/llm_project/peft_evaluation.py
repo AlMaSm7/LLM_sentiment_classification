@@ -1,18 +1,14 @@
 from pathlib import Path
 from typing import Any
 
-import torch
-
 from llm_project.evaluation import (
     evaluate_outputs,
 )
-from llm_project.utils import (
-    PROJECT_ROOT,
-    build_prompt,
-    get_processed_path,
-    load_jsonl_records,
-    save_json,
-)
+from llm_project.utils.data_io import get_processed_path, load_jsonl_records, save_json
+from llm_project.utils.model_helpers import generate_texts
+from llm_project.utils.prompts import build_prompt
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def get_evaluation_paths(
@@ -49,78 +45,6 @@ def get_evaluation_paths(
         }
 
     raise ValueError(f"Unknown condition: {condition}")
-
-
-@torch.inference_mode()
-def generate_texts(
-    model,
-    tokenizer,
-    prompts: list[str],
-    batch_size: int,
-    max_length: int,
-    max_new_tokens: int,
-    do_sample: bool,
-) -> list[str]:
-    """Generate responses for several prompts."""
-
-    tokenizer.padding_side = "left"
-
-    model.config.use_cache = True
-    model.eval()
-
-    outputs = []
-
-    for start in range(
-        0,
-        len(prompts),
-        batch_size,
-    ):
-        batch_prompts = prompts[start : start + batch_size]
-
-        formatted_prompts = [
-            tokenizer.apply_chat_template(
-                [
-                    {
-                        "role": "user",
-                        "content": prompt,
-                    }
-                ],
-                tokenize=False,
-                add_generation_prompt=True,
-            )
-            for prompt in batch_prompts
-        ]
-
-        inputs = tokenizer(
-            formatted_prompts,
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=max_length,
-            add_special_tokens=False,
-        )
-
-        inputs = {key: value.to(model.device) for key, value in inputs.items()}
-
-        generated = model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            do_sample=do_sample,
-            pad_token_id=tokenizer.pad_token_id,
-            eos_token_id=tokenizer.eos_token_id,
-        )
-
-        # prompt + generated response
-        generated = generated[:, inputs["input_ids"].shape[1] :]
-
-        outputs.extend(
-            tokenizer.batch_decode(
-                generated,
-                skip_special_tokens=True,
-            )
-        )
-
-    return outputs
 
 
 def evaluate_model(

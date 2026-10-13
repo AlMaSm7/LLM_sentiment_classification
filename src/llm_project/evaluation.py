@@ -10,7 +10,7 @@ from sklearn.metrics import (
     recall_score,
 )
 
-from llm_project.constants import EMOTIONS
+from llm_project.utils.constants import EMOTIONS
 
 
 def parse_true_labels(

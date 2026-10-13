@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name=peft
-#SBATCH --array=0-1
+#SBATCH --array=0-5
 #SBATCH --time=04:00:00
 #SBATCH --partition=gpu
 #SBATCH --gpus-per-node=a100:1
@@ -15,7 +15,7 @@
 cd /scratch/s6865704/llm/LLM_sentiment_classification
 
 # uncomment when model is downloaded / comment when model is not downloaded!!
-export HF_HUB_OFFLINE=1
+# export HF_HUB_OFFLINE=1
 
 export HF_HOME=/scratch/s6865704/llm/.cache/huggingface
 mkdir -p "$HF_HOME"
@@ -45,11 +45,11 @@ python --version
 # All six experiments.
 EXPERIMENTS=(
     "de english"
-    # "de target"
-    # "de bilingual"
-    # "sv english"
-    # "sv target"
-    # "sv bilingual"
+    "de target"
+    "de bilingual"
+    "sv english"
+    "sv target"
+    "sv bilingual"
 )
 
 # Pick the experiment belonging to this array task.
