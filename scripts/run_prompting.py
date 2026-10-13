@@ -46,7 +46,7 @@ from llm_project.prompting import (  # noqa: E402
     gold_labels,
     parse_prediction,
     prompt_fingerprint,
-    select_five_shot_ids,
+    select_covering_ids,
     to_model_input,
 )
 
@@ -165,7 +165,7 @@ def main() -> None:
     train_tg = load_jsonl(data_path(cfg, "train_target", lang))
 
     if args.select_ids:
-        ids = select_five_shot_ids(train_en, train_tg, id_key, **cfg["prompting"]["selection"])
+        ids = select_covering_ids(train_en, train_tg, id_key, **cfg["prompting"]["selection"])
         en = {r[id_key]: r for r in train_en}
         tg = {r[id_key]: r for r in train_tg}
         for i in ids:

@@ -3,6 +3,10 @@
 Everything that defines the experimental condition lives here, so the report can
 point to one file for: the prompt templates, the demonstration-selection
 procedure, the output parser and the decoding parameters.
+
+uv run python scripts/run_prompting.py --select-ids
+to get the ids with multiple feelings so we cover more in the prompts
+
 """
 
 from __future__ import annotations
@@ -203,7 +207,7 @@ def gold_labels(output: Any) -> list[str]:
 # ---------------------------------------------------------------------------
 # 3. Demonstration selection (fixed, aligned IDs)
 # ---------------------------------------------------------------------------
-def select_five_shot_ids(
+def select_covering_ids(
     train_en: Sequence[dict],
     train_target: Sequence[dict],
     id_key: str,
@@ -211,42 +215,68 @@ def select_five_shot_ids(
     seed: int = 42,
     min_words: int = 5,
     max_words: int = 20,
+    max_labels: int = 3,
+    min_single: int = 1,
 ) -> list:
-    """Deterministically choose k aligned training IDs.
+    """Deterministically choose k aligned training IDs whose labels jointly
+    cover all emotions.
 
     Procedure (report this):
-      1. keep IDs present in BOTH the English and the assigned-language train set,
-         with identical gold labels in both;
-      2. keep single-label items whose English text has min_words..max_words words;
-      3. with random.Random(seed), sample k distinct emotions;
-      4. for each emotion, sort its candidates by ID and pick one with the same RNG.
-    Run once, copy the IDs into the config, and never change them afterwards.
+      1. keep IDs present in both train sets with identical gold labels;
+      2. keep items with 1..max_labels labels and min_words..max_words English words;
+      3. sort candidates by ID; with random.Random(seed), fill the k slots one by one,
+         each time choosing at random among candidates that add enough
+         not-yet-covered labels to still reach full coverage in the remaining slots;
+      4. require at least min_single single-label demonstrations.
     """
     target_by_id = {r[id_key]: r for r in train_target}
-    rng = random.Random(seed)
-    emotions = rng.sample(LABELS, k)
-
-    #tryouts for the training items, only allowed if the ID exists in target
     candidates = []
     for r in train_en:
         rid = r[id_key]
         if rid not in target_by_id:
             continue
         labels = gold_labels(r["output"])
-        if len(labels) != 1 or labels != gold_labels(target_by_id[rid]["output"]):
+        if not 1 <= len(labels) <= max_labels:
+            continue
+        if labels != gold_labels(target_by_id[rid]["output"]):
             continue
         if min_words <= len(r["input"].split()) <= max_words:
-            candidates.append((rid, labels[0]))
+            candidates.append((rid, frozenset(labels)))
+    candidates.sort(key=lambda c: str(c[0]))
 
-    chosen = []
-    for emotion in emotions:
-        pool = sorted((rid for rid, lab in candidates if lab == emotion), key=str)
+    rng = random.Random(seed)
+    chosen: list = []
+    uncovered = set(LABELS)
+    singles_needed = min_single
+
+    for slot in range(k):
+        slots_left = k - slot
+        used = {rid for rid, _ in chosen}
+        pool = [c for c in candidates if c[0] not in used]
+
+        if slots_left <= singles_needed:
+            # Reserve the last slots for single-label items.
+            pool = [c for c in pool if len(c[1]) == 1]
+            need = -(-len(uncovered) // slots_left)  # ceil
+        else:
+            # Leave room for the reserved single-label slots.
+            multi_slots = slots_left - singles_needed
+            need = -(-max(0, len(uncovered) - singles_needed) // multi_slots)
+        pool = [c for c in pool if len(c[1] & uncovered) >= need and (c[1] & uncovered or not uncovered)]
+
         if not pool:
-            raise ValueError(f"No candidate for emotion {emotion!r}; relax the filters.")
-        chosen.append(rng.choice(pool))
-    return chosen
+            raise ValueError("Cannot cover all labels with these filters; relax them or raise k.")
+        rid, labels = rng.choice(pool)
+        chosen.append((rid, labels))
+        uncovered -= labels
+        if len(labels) == 1:
+            singles_needed = max(0, singles_needed - 1)
 
-#returns the demonstrations as {"id", "text", "labels"} dictionaries.
+    if uncovered:
+        raise ValueError(f"Labels left uncovered: {sorted(uncovered)}")
+    return [rid for rid, _ in chosen]
+
+# Returns the demonstrations as {"id", "text", "labels"} dictionaries.
 def build_examples(ids: Sequence, rows: Sequence[dict], id_key: str) -> list[dict]:
     """Turn fixed IDs into demonstrations from ONE language's train set."""
     by_id = {r[id_key]: r for r in rows}

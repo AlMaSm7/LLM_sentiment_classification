@@ -1,0 +1,67 @@
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/381 [00:00<?, ?it/s]Loading weights:   0%|          | 1/381 [00:02<16:22,  2.58s/it]Loading weights:   2%|▏         | 6/381 [00:02<02:09,  2.89it/s]Loading weights:   3%|▎         | 11/381 [00:02<01:03,  5.87it/s]Loading weights:   4%|▎         | 14/381 [00:03<00:52,  6.99it/s]Loading weights:   4%|▍         | 16/381 [00:03<00:44,  8.19it/s]Loading weights:   5%|▌         | 20/381 [00:03<00:30, 11.91it/s]Loading weights:   6%|▌         | 23/381 [00:03<00:27, 13.23it/s]Loading weights:   7%|▋         | 26/381 [00:03<00:22, 15.51it/s]Loading weights:   8%|▊         | 29/381 [00:03<00:19, 17.73it/s]Loading weights:   8%|▊         | 32/381 [00:04<00:22, 15.64it/s]Loading weights:  10%|▉         | 37/381 [00:04<00:24, 13.77it/s]Loading weights:  11%|█         | 41/381 [00:04<00:22, 14.89it/s]Loading weights:  13%|█▎        | 49/381 [00:04<00:17, 19.15it/s]Loading weights:  14%|█▎        | 52/381 [00:05<00:16, 20.33it/s]Loading weights:  14%|█▍        | 55/381 [00:05<00:15, 20.62it/s]Loading weights:  15%|█▌        | 58/381 [00:05<00:14, 22.28it/s]Loading weights:  16%|█▌        | 61/381 [00:05<00:16, 19.04it/s]Loading weights:  17%|█▋        | 65/381 [00:05<00:15, 20.03it/s]Loading weights:  18%|█▊        | 68/381 [00:05<00:17, 18.34it/s]Loading weights:  19%|█▉        | 73/381 [00:06<00:14, 21.22it/s]Loading weights:  20%|█▉        | 76/381 [00:06<00:17, 17.91it/s]Loading weights:  20%|██        | 78/381 [00:06<00:21, 14.26it/s]Loading weights:  22%|██▏       | 84/381 [00:06<00:15, 19.63it/s]Loading weights:  23%|██▎       | 87/381 [00:06<00:15, 19.49it/s]Loading weights:  24%|██▍       | 91/381 [00:07<00:12, 22.58it/s]Loading weights:  25%|██▍       | 94/381 [00:07<00:16, 17.92it/s]Loading weights:  25%|██▌       | 97/381 [00:07<00:17, 16.61it/s]Loading weights:  27%|██▋       | 101/381 [00:07<00:19, 14.22it/s]Loading weights:  28%|██▊       | 105/381 [00:08<00:15, 17.34it/s]Loading weights:  29%|██▊       | 109/381 [00:08<00:13, 19.91it/s]Loading weights:  30%|██▉       | 113/381 [00:08<00:15, 17.41it/s]Loading weights:  30%|███       | 116/381 [00:08<00:13, 19.15it/s]Loading weights:  32%|███▏      | 121/381 [00:08<00:12, 21.10it/s]Loading weights:  33%|███▎      | 124/381 [00:08<00:12, 20.68it/s]Loading weights:  34%|███▎      | 128/381 [00:09<00:10, 23.23it/s]Loading weights:  34%|███▍      | 131/381 [00:09<00:11, 21.60it/s]Loading weights:  36%|███▌      | 136/381 [00:09<00:09, 25.31it/s]Loading weights:  36%|███▋      | 139/381 [00:09<00:13, 18.45it/s]Loading weights:  37%|███▋      | 142/381 [00:09<00:12, 18.71it/s]Loading weights:  39%|███▉      | 148/381 [00:09<00:10, 22.10it/s]Loading weights:  40%|███▉      | 151/381 [00:10<00:10, 22.46it/s]Loading weights:  41%|████      | 155/381 [00:10<00:09, 25.10it/s]Loading weights:  41%|████▏     | 158/381 [00:10<00:09, 22.41it/s]Loading weights:  43%|████▎     | 163/381 [00:10<00:10, 20.07it/s]Loading weights:  44%|████▎     | 166/381 [00:10<00:10, 20.48it/s]Loading weights:  44%|████▍     | 169/381 [00:11<00:16, 13.14it/s]Loading weights:  45%|████▌     | 173/381 [00:11<00:13, 15.93it/s]Loading weights:  46%|████▌     | 176/381 [00:11<00:13, 15.06it/s]Loading weights:  48%|████▊     | 181/381 [00:11<00:11, 17.24it/s]Loading weights:  49%|████▊     | 185/381 [00:12<00:13, 14.76it/s]Loading weights:  50%|█████     | 192/381 [00:12<00:08, 22.05it/s]Loading weights:  51%|█████▏    | 196/381 [00:12<00:09, 19.84it/s]Loading weights:  52%|█████▏    | 200/381 [00:12<00:08, 22.22it/s]Loading weights:  53%|█████▎    | 203/381 [00:12<00:09, 18.84it/s]Loading weights:  54%|█████▍    | 206/381 [00:13<00:08, 19.83it/s]Loading weights:  55%|█████▌    | 211/381 [00:13<00:10, 16.43it/s]Loading weights:  56%|█████▌    | 214/381 [00:13<00:09, 16.89it/s]Loading weights:  57%|█████▋    | 219/381 [00:13<00:07, 21.84it/s]Loading weights:  58%|█████▊    | 222/381 [00:14<00:08, 17.72it/s]Loading weights:  60%|██████    | 229/381 [00:14<00:06, 22.74it/s]Loading weights:  61%|██████    | 232/381 [00:14<00:06, 21.44it/s]Loading weights:  62%|██████▏   | 237/381 [00:14<00:05, 26.46it/s]Loading weights:  63%|██████▎   | 241/381 [00:14<00:06, 20.62it/s]Loading weights:  65%|██████▍   | 246/381 [00:14<00:05, 24.68it/s]Loading weights:  66%|██████▌   | 250/381 [00:15<00:05, 22.43it/s]Loading weights:  67%|██████▋   | 255/381 [00:15<00:04, 26.85it/s]Loading weights:  68%|██████▊   | 259/381 [00:15<00:05, 23.15it/s]Loading weights:  69%|██████▉   | 262/381 [00:15<00:05, 22.81it/s]Loading weights:  70%|██████▉   | 265/381 [00:15<00:04, 24.11it/s]Loading weights:  70%|███████   | 268/381 [00:15<00:05, 22.00it/s]Loading weights:  72%|███████▏  | 273/381 [00:16<00:04, 26.64it/s]Loading weights:  72%|███████▏  | 276/381 [00:16<00:06, 15.89it/s]Loading weights:  73%|███████▎  | 280/381 [00:16<00:06, 14.87it/s]Loading weights:  75%|███████▍  | 285/381 [00:17<00:05, 17.05it/s]Loading weights:  76%|███████▌  | 290/381 [00:17<00:04, 21.70it/s]Loading weights:  77%|███████▋  | 293/381 [00:17<00:04, 17.80it/s]Loading weights:  78%|███████▊  | 296/381 [00:17<00:04, 19.26it/s]Loading weights:  79%|███████▉  | 301/381 [00:17<00:03, 21.07it/s]Loading weights:  80%|███████▉  | 304/381 [00:17<00:03, 19.32it/s]Loading weights:  81%|████████  | 307/381 [00:18<00:03, 21.08it/s]Loading weights:  81%|████████▏ | 310/381 [00:18<00:03, 20.67it/s]Loading weights:  82%|████████▏ | 313/381 [00:18<00:03, 19.77it/s]Loading weights:  84%|████████▎ | 319/381 [00:18<00:03, 20.43it/s]Loading weights:  85%|████████▍ | 323/381 [00:18<00:02, 23.08it/s]Loading weights:  86%|████████▌ | 328/381 [00:19<00:02, 17.96it/s]Loading weights:  88%|████████▊ | 337/381 [00:19<00:01, 25.64it/s]Loading weights:  89%|████████▉ | 340/381 [00:19<00:01, 23.32it/s]Loading weights:  91%|█████████ | 345/381 [00:19<00:01, 26.74it/s]Loading weights:  92%|█████████▏| 349/381 [00:19<00:01, 24.31it/s]Loading weights:  93%|█████████▎| 353/381 [00:19<00:01, 26.58it/s]Loading weights:  93%|█████████▎| 356/381 [00:20<00:01, 20.81it/s]Loading weights:  94%|█████████▍| 359/381 [00:20<00:00, 22.28it/s]Loading weights:  95%|█████████▌| 362/381 [00:20<00:01, 17.40it/s]Loading weights:  96%|█████████▋| 367/381 [00:20<00:00, 23.07it/s]Loading weights:  98%|█████████▊| 373/381 [00:21<00:00, 19.87it/s]Loading weights:  99%|█████████▉| 379/381 [00:21<00:00, 25.97it/s]Loading weights: 100%|██████████| 381/381 [00:21<00:00, 18.01it/s]
+EuroLLM-9B-Instruct__en__zero_shot__default: macro_f1=0.365 micro_f1=0.399 malformed=0.000
+EuroLLM-9B-Instruct__en__zero_shot__paraphrase: macro_f1=0.404 micro_f1=0.435 malformed=0.000
+EuroLLM-9B-Instruct__en__zero_shot__no_format_example: macro_f1=0.403 micro_f1=0.420 malformed=0.000
+EuroLLM-9B-Instruct__en__zero_shot__terse: macro_f1=0.374 micro_f1=0.384 malformed=0.000
+EuroLLM-9B-Instruct__en__five_shot__default: macro_f1=0.392 micro_f1=0.419 malformed=0.000
+EuroLLM-9B-Instruct__en__five_shot__paraphrase: macro_f1=0.430 micro_f1=0.453 malformed=0.000
+EuroLLM-9B-Instruct__en__five_shot__no_format_example: macro_f1=0.390 micro_f1=0.415 malformed=0.000
+EuroLLM-9B-Instruct__en__five_shot__terse: macro_f1=0.356 micro_f1=0.395 malformed=0.000
+EuroLLM-9B-Instruct__sv__zero_shot__default: macro_f1=0.302 micro_f1=0.343 malformed=0.000
+EuroLLM-9B-Instruct__sv__zero_shot__paraphrase: macro_f1=0.369 micro_f1=0.399 malformed=0.000
+EuroLLM-9B-Instruct__sv__zero_shot__no_format_example: macro_f1=0.352 micro_f1=0.368 malformed=0.000
+EuroLLM-9B-Instruct__sv__zero_shot__terse: macro_f1=0.340 micro_f1=0.346 malformed=0.000
+EuroLLM-9B-Instruct__sv__five_shot__default: macro_f1=0.387 micro_f1=0.410 malformed=0.000
+EuroLLM-9B-Instruct__sv__five_shot__paraphrase: macro_f1=0.399 micro_f1=0.420 malformed=0.000
+EuroLLM-9B-Instruct__sv__five_shot__no_format_example: macro_f1=0.380 micro_f1=0.407 malformed=0.000
+EuroLLM-9B-Instruct__sv__five_shot__terse: macro_f1=0.355 micro_f1=0.397 malformed=0.000
+
+ condition                five_shot                    ...  zero_shot       
+variant                    default no_format_example  ... paraphrase  terse
+model               lang                              ...                  
+EuroLLM-9B-Instruct en       0.392              0.39  ...      0.404  0.374
+                    sv       0.387              0.38  ...      0.369  0.340
+
+[2 rows x 8 columns]
+
+###############################################################################
+Hábrók Cluster
+Job 32362216 for user s6866573
+Finished at: Fri Oct  2 12:05:46 CEST 2026
+
+Job details:
+============
+
+Job ID                         : 32362216
+Name                           : prompting
+User                           : s6866573
+Partition                      : gpumedium
+Nodes                          : putter3
+Number of Nodes                : 1
+Cores                          : 4
+Number of Tasks                : 1
+State                          : COMPLETED  
+Submit                         : 2026-10-02T11:20:01
+Start                          : 2026-10-02T11:25:35
+End                            : 2026-10-02T12:05:41
+Reserved walltime              : 06:00:00
+Used walltime                  : 00:40:06
+Used CPU time                  : 00:10:14 (Efficiency:  6.38%)
+% User (Computation)           : 89.67%
+% System (I/O)                 : 10.33%
+Total memory reserved          : 32G
+Maximum memory used            : 12.61G
+Requested GPUs                 : 1
+Allocated GPUs                 : a100=1
+Max GPU utilization            : 96%
+Max GPU memory used            : 18.51G
+
+Acknowledgements:
+=================
+
+Please see this page for information about acknowledging Hábrók in your publications:
+
+https://wiki.hpc.rug.nl/habrok/introduction/scientific_output
+
+################################################################################
