@@ -1,34 +1,52 @@
 experiment:
-  name: "baseline_qlora" # change for wandb run name
+  name: "baseline"
   seed: 42
 
 model:
-  name: "Qwen/Qwen2.5-3B-Instruct"
-
-use_wandb: true
-wandb_project: "peft_emotion_classification"
+  name: "Qwen/Qwen2.5-7B-Instruct"
 
 peft:
-  method: "qlora" # change to qlora / lora if needed
+  # "lora" or "qlora"
+  method: "qlora"
 
-  # LoRa params
   rank: 16
   alpha: 32
   dropout: 0.05
 
-  target_modules: ["q_prof", "v_proj"]
+  target_modules:
+    - "q_proj"
+    - "v_proj"
+
+  quantization:
+    # 4 = conventional QLoRA
+    # 8 = your previous 8-bit setup
+    bits: 4
+
+    # 4-bit settings
+    quant_type: "nf4"
+    double_quant: true
+
+    # 8-bit settings
+    llm_int8_threshold: 6.0
+    llm_int8_has_fp16_weight: false
 
 training:
   learning_rate: 0.0002
-  batch_size: 8
-  gradient_accumulation_steps: 8
-  epochs: 6
+  batch_size: 4
+  gradient_accumulation_steps: 4
+  epochs: 3
   max_seq_length: 512
   bf16: true
-
-eval:
-  batch_size: 32 # evaluation doesn't calculate gradients, so it can use a larger batch size
+  save_total_limit: 2
+  logging_steps: 10
 
 generation:
   batch_size: 8
   max_new_tokens: 64
+  do_sample: false
+
+wandb:
+  enabled: false
+  project: "LLM_sentiment_classification"
+  entity: null
+  mode: "online"

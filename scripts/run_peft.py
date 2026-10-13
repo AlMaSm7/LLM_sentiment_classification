@@ -1,29 +1,31 @@
-import argparse
-from datetime import datetime
-from pathlib import Path
+"""Run one PEFT experiment."""
 
-import wandb
+import argparse
+
 from llm_project.peft_evaluation import (
     evaluate_model,
 )
-from llm_project.peft_inference import (
-    run_inference,
-)
 from llm_project.peft_training import (
     build_model,
-    get_model_dir,
-    load_config,
+    load_saved_model,
     load_training_data,
     prepare_dataset,
     save_model,
     train_model,
 )
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+from llm_project.utils import (
+    PROJECT_ROOT,
+    load_yaml,
+)
+from llm_project.wandb_utils import (
+    finish_wandb,
+    init_wandb,
+    log_metrics,
+)
 
 
 def parse_args() -> argparse.Namespace:
-    """Read experiment arguments."""
+    """Read command-line arguments."""
 
     parser = argparse.ArgumentParser()
 
@@ -45,208 +47,143 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--split",
-        choices=["dev", "test"],
+        choices=[
+            "dev",
+            "test",
+        ],
         default="dev",
+    )
+
+    parser.add_argument(
+        "--evaluate-only",
+        action="store_true",
     )
 
     return parser.parse_args()
 
 
-def get_inference_examples(
-    language: str,
-) -> list[str]:
-    """Small examples for manually checking predictions."""
-
-    if language == "de":
-        return [
-            "Ich habe große Angst davor, was morgen passieren könnte.",
-            "Ich bin unglaublich glücklich, dich wiederzusehen!",
-            "Ich kann nicht glauben, dass du mir das angetan hast.",
-        ]
-
-    return [
-        "Jag är väldigt rädd för vad som kan hända imorgon.",
-        "Jag är så glad att se dig igen!",
-        "Jag kan inte tro att du gjorde så mot mig.",
-    ]
-
-
 def main() -> None:
-    """Run training, evaluation and inference."""
+    """Run training or evaluation."""
 
     args = parse_args()
 
+    # 1. Configuration
+    config = load_yaml(PROJECT_ROOT / "configs" / "peft.yaml")
+
+    run_name = f"{args.language}_{args.condition}_{config['experiment']['name']}"
+
     print()
-    print("PEFT experiment")
-    print(f"Language:  {args.language}")
-    print(f"Condition: {args.condition}")
-    print()
+    print(f"Experiment: {config['experiment']['name']}")
+    print(f"Model:      {config['model']['name']}")
+    print(f"PEFT:       {config['peft']['method']}")
+    print(f"Language:   {args.language}")
+    print(f"Condition:  {args.condition}")
+    print(f"Split:      {args.split}")
+    print(f"W&B:        {config['wandb']['enabled']}")
 
-    print("1. Loading config")
-    config = load_config()
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    run_name = f"{args.language}_{args.condition}_{config['experiment']['name']}_{timestamp}"
-
-    wandb.init(
-        project=config["wandb_project"],
-        name=run_name,
-        config={
-            "language": args.language,
-            "condition": args.condition,
-            "model": config["model"]["name"],
-            "rank": config["peft"]["rank"],
-            "alpha": config["peft"]["alpha"],
-            "dropout": config["peft"]["dropout"],
-            "target_modules": config["peft"]["target_modules"],
-            "learning_rate": config["training"]["learning_rate"],
-            "batch_size": config["training"]["batch_size"],
-            "gradient_accumulation_steps": (config["training"]["gradient_accumulation_steps"]),
-            "epochs": config["training"]["epochs"],
-            "max_seq_length": config["training"]["max_seq_length"],
-            "seed": config["experiment"]["seed"],
-        },
-    )
-    print("2. Loading data")
-    train_data, dev_data = load_training_data(
-        language=args.language,
-        condition=args.condition,
-    )
-
-    print("3. Building model")
-    model, tokenizer = build_model(config)
-
-    print("4. Preparing data")
-    train_dataset = prepare_dataset(
-        train_data,
-        tokenizer,
-        config["training"]["max_seq_length"],
-    )
-
-    dev_dataset = prepare_dataset(
-        dev_data,
-        tokenizer,
-        config["training"]["max_seq_length"],
-    )
-
-    print("5. Training")
-    model_dir = get_model_dir(
-        args.language,
-        args.condition,
-        config,
-    )
-
-    trainer = train_model(
-        model=model,
-        tokenizer=tokenizer,
-        train_dataset=train_dataset,
-        dev_dataset=dev_dataset,
+    # 2. W&B
+    wandb_run = init_wandb(
         config=config,
-        model_dir=model_dir,
-        experiment=run_name,
+        run_name=run_name,
     )
 
-    print("6. Saving model")
-    save_model(
-        trainer=trainer,
-        tokenizer=tokenizer,
-        config=config,
-        model_dir=model_dir,
-        language=args.language,
-        condition=args.condition,
-    )
+    try:
+        # 3A. Load an existing model
+        if args.evaluate_only:
+            print()
+            print("Loading saved model")
 
-    print("7. Evaluating")
-    metrics = evaluate_model(
-        model=model,
-        tokenizer=tokenizer,
-        language=args.language,
-        condition=args.condition,
-        config=config,
-        split=args.split,
-    )
-
-    log_metrics_to_wandb(metrics)
-
-    print()
-    print("Metrics:")
-    print(metrics)
-
-    print()
-    print("8. Running inference")
-
-    examples = get_inference_examples(args.language)
-
-    predictions = run_inference(
-        model=model,
-        tokenizer=tokenizer,
-        texts=examples,
-        language=args.language,
-        condition=args.condition,
-        config=config,
-    )
-
-    for result in predictions:
-        print()
-        print(result["text"])
-        print("->", result["prediction"])
-
-    log_predictions_to_wandb(predictions)
-
-    print()
-    print("Experiment finished.")
-    wandb.finish()
-
-
-def log_metrics_to_wandb(
-    metrics: dict,
-) -> None:
-    """Log evaluation metrics to W&B."""
-
-    for language, values in metrics.items():
-        wandb.log(
-            {
-                f"{language}/micro_f1": values["micro_f1"],
-                f"{language}/jaccard": values["jaccard"],
-                f"{language}/macro_f1": values["macro_f1"],
-                f"{language}/precision": values["precision"],
-                f"{language}/recall": values["recall"],
-                f"{language}/hamming_loss": values["hamming_loss"],
-            }
-        )
-
-        for emotion, score in values["per_emotion_f1"].items():
-            wandb.log(
-                {
-                    f"{language}/f1_{emotion}": score,
-                }
+            model, tokenizer = load_saved_model(
+                language=args.language,
+                condition=args.condition,
+                config=config,
             )
 
+        # 3B. Train a new model
+        else:
+            if args.split != "dev":
+                raise ValueError(
+                    "Training must use the "
+                    "development split. "
+                    "For test evaluation, use "
+                    "--evaluate-only."
+                )
 
-def log_predictions_to_wandb(
-    predictions: list[dict],
-) -> None:
-    """Log inference examples to W&B."""
+            print()
+            print("Loading training data")
 
-    table = wandb.Table(
-        columns=[
-            "text",
-            "prediction",
-        ]
-    )
+            train_data, dev_data = load_training_data(
+                language=args.language,
+                condition=args.condition,
+            )
 
-    for result in predictions:
-        table.add_data(
-            result["text"],
-            result["prediction"],
+            print()
+            print("Building model")
+
+            model, tokenizer = build_model(config)
+
+            print()
+            print("Preparing datasets")
+
+            train_dataset = prepare_dataset(
+                dataset=train_data,
+                tokenizer=tokenizer,
+                config=config,
+            )
+
+            dev_dataset = prepare_dataset(
+                dataset=dev_data,
+                tokenizer=tokenizer,
+                config=config,
+            )
+
+            print()
+            print("Training")
+
+            trainer = train_model(
+                model=model,
+                tokenizer=tokenizer,
+                train_dataset=train_dataset,
+                dev_dataset=dev_dataset,
+                language=args.language,
+                condition=args.condition,
+                config=config,
+            )
+
+            print()
+            print("Saving model")
+
+            save_model(
+                trainer=trainer,
+                tokenizer=tokenizer,
+                language=args.language,
+                condition=args.condition,
+                config=config,
+            )
+
+        # 4. Evaluation
+        print()
+        print(f"Evaluating {args.split}")
+
+        metrics = evaluate_model(
+            model=model,
+            tokenizer=tokenizer,
+            language=args.language,
+            condition=args.condition,
+            split=args.split,
+            config=config,
         )
 
-    wandb.log(
-        {
-            "inference_examples": table,
-        }
-    )
+        log_metrics(
+            run=wandb_run,
+            metrics=metrics,
+        )
+
+        print()
+        print("PEFT experiment finished.")
+
+    finally:
+        finish_wandb(wandb_run)
 
 
 if __name__ == "__main__":
