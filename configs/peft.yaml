@@ -1,5 +1,5 @@
 experiment:
-  name: "baseline_qlora" # change for wandb run name
+  name: "baseline_qlora_qv" # change for wandb run name
   seed: 42
 
 model:
@@ -16,7 +16,7 @@ peft:
   alpha: 32
   dropout: 0.05
 
-  target_modules: ["q_prof", "v_proj"]
+  target_modules: ["q_proj", "v_proj"]
 
 training:
   learning_rate: 0.0002
