@@ -7,4 +7,4 @@ def build_prompt(
 ) -> str:
     """Build the common emotion-classification prompt."""
 
-    return f"{instruction}\n\nText:\n{text}\n\nOutput only the JSON list:"
+    return f"{instruction}\n\nText:\n{text}\n"

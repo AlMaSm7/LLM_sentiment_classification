@@ -1,5 +1,5 @@
 experiment:
-  name: "baseline"
+  name: "qwen7b_qlora"
   seed: 42
 
 model:
