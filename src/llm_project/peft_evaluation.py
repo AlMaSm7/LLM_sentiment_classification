@@ -152,7 +152,7 @@ def compute_metrics(
     }
 
 
-@torch.inference_mode()  # PyTorch doesn't store gradient information with this
+@torch.inference_mode()  
 def evaluate_dataset(
     model,
     tokenizer,
@@ -217,7 +217,6 @@ def evaluate_dataset(
             eos_token_id=tokenizer.eos_token_id,
         )
 
-        # remove the prompt tokens and only keep the generated answer
         generated = generated[:, inputs["input_ids"].shape[1] :]
 
         texts = tokenizer.batch_decode(

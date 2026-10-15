@@ -141,23 +141,12 @@ class ParsedOutput:
     def empty(self) -> bool:
         return not self.labels
 
-
+#case + whitespace normalization
 def _normalise(item: str) -> str:
-    """Case and whitespace normalisation only. No synonym mapping."""
     return " ".join(item.split()).lower()
 
-
+#only keep the permitted lavels, drop duplicates, normalise case/whitespace
 def parse_prediction(raw: str) -> ParsedOutput:
-    """Parse a model output into a set of permitted labels.
-
-    Rules (report these):
-      * strip surrounding whitespace and an optional ```json fence;
-      * take the first [...] span and json.loads it;
-      * if that fails, or it is not a list of strings -> malformed, empty set;
-      * normalise case/whitespace of each item, keep only exact permitted labels,
-        drop duplicates; anything else (e.g. "happiness") is ignored, not mapped;
-      * a well-formed list with no permitted label -> empty set (not malformed).
-    """
     text = raw.strip()
     try:
         whole = json.loads(text)
@@ -187,12 +176,10 @@ def parse_prediction(raw: str) -> ParsedOutput:
 
 
 def parse_labels(raw: str) -> list[str]:
-    """Backward-compatible helper: just the label list."""
     return list(parse_prediction(raw).labels)
 
 
 def gold_labels(output: Any) -> list[str]:
-    """Gold labels from a data row's "output" field (list or JSON string)."""
     if isinstance(output, list):
         items = output
     else:
@@ -207,9 +194,7 @@ def gold_labels(output: Any) -> list[str]:
     return [label for label in LABELS if label in normalised]
 
 
-# ---------------------------------------------------------------------------
-# 3. Demonstration selection (fixed, aligned IDs)
-# ---------------------------------------------------------------------------
+#here we get the 5 prompt shots, only the ones that are in both train sets, and have the same labels, and have 1-3 labels, and have 5-20 words
 def select_covering_ids(
     train_en: Sequence[dict],
     train_target: Sequence[dict],
@@ -221,17 +206,6 @@ def select_covering_ids(
     max_labels: int = 3,
     min_single: int = 1,
 ) -> list:
-    """Deterministically choose k aligned training IDs whose labels jointly
-    cover all emotions.
-
-    Procedure (report this):
-      1. keep IDs present in both train sets with identical gold labels;
-      2. keep items with 1..max_labels labels and min_words..max_words English words;
-      3. sort candidates by ID; with random.Random(seed), fill the k slots one by one,
-         each time choosing at random among candidates that add enough
-         not-yet-covered labels to still reach full coverage in the remaining slots;
-      4. require at least min_single single-label demonstrations.
-    """
     target_by_id = {r[id_key]: r for r in train_target}
     candidates = []
     for r in train_en:
@@ -258,11 +232,9 @@ def select_covering_ids(
         pool = [c for c in candidates if c[0] not in used]
 
         if slots_left <= singles_needed:
-            # Reserve the last slots for single-label items.
             pool = [c for c in pool if len(c[1]) == 1]
-            need = -(-len(uncovered) // slots_left)  # ceil
+            need = -(-len(uncovered) // slots_left) 
         else:
-            # Leave room for the reserved single-label slots.
             multi_slots = slots_left - singles_needed
             need = -(-max(0, len(uncovered) - singles_needed) // multi_slots)
         pool = [
@@ -282,9 +254,8 @@ def select_covering_ids(
     return [rid for rid, _ in chosen]
 
 
-# Returns the demonstrations as {"id", "text", "labels"} dictionaries.
+#returns the demonstrations as {"id", "text", "labels"} dictionaries.
 def build_examples(ids: Sequence, rows: Sequence[dict], id_key: str) -> list[dict]:
-    """Turn fixed IDs into demonstrations from ONE language's train set."""
     by_id = {r[id_key]: r for r in rows}
     missing = [i for i in ids if i not in by_id]
     if missing:
@@ -294,20 +265,13 @@ def build_examples(ids: Sequence, rows: Sequence[dict], id_key: str) -> list[dic
     ]
 
 
-# ---------------------------------------------------------------------------
-# 4. Generation (greedy decoding)
-# ---------------------------------------------------------------------------
+
 DEFAULT_GENERATION = {"max_new_tokens": 64, "batch_size": 8, "chat_template_kwargs": {}}
 
 
 def to_model_input(
     tokenizer, message: str, chat_template_kwargs: dict | None = None
 ) -> tuple[str, bool]:
-    """Wrap the message in the model's chat template (single user turn).
-
-    Returns (prompt_string, used_chat_template). Models without a chat template
-    get the raw message, which already ends with "Labels:".
-    """
     if getattr(tokenizer, "chat_template", None):
         prompt = tokenizer.apply_chat_template(
             [{"role": "user", "content": message}],
@@ -327,8 +291,6 @@ def generate(
     max_new_tokens: int = 64,
     batch_size: int = 8,
 ) -> list[str]:
-    """Greedy decoding in left-padded batches. batch_size=1 gives the most
-    reproducible results (padding can change bf16 numerics very slightly)."""
     import torch
 
     tokenizer.padding_side = "left"
@@ -344,7 +306,6 @@ def generate(
                 batch,
                 return_tensors="pt",
                 padding=True,
-                # The chat template already inserts BOS/special tokens.
                 add_special_tokens=not used_chat_template,
             ).to(model.device)
             generated = model.generate(
@@ -370,7 +331,7 @@ def predict_with_prompt(
     config: dict | None = None,
     variant: str = DEFAULT_VARIANT,
 ) -> str:
-    """Single-example helper, kept for notebook compatibility."""
+    #this fir the notebook i actually dont know what it does
     gen = {**DEFAULT_GENERATION, **((config or {}).get("generation", {}))}
     message = build_prompt(text, prompt_type, examples, variant)
     prompt, used = to_model_input(tokenizer, message, gen.get("chat_template_kwargs"))

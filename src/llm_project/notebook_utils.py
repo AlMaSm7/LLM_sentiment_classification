@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Sequence, Tuple
+from typing import Dict, Iterable, Sequence, Tuple
 from pathlib import Path
 import json
 import numpy as np
@@ -129,3 +129,130 @@ def show_errors(model: str, lang: str, condition: str, pred_dir: str | Path, k: 
     print(f"{len(wrong)}/{len(df)} not exactly right")
     with pd.option_context("display.max_colwidth", 120):
         display(wrong.sample(min(k, len(wrong)), random_state=seed)[["text", "gold", "pred", "raw_output"]])
+
+
+def ensemble_majority(pred_dfs: Dict[str, pd.DataFrame], labels: Iterable[str], tie_strategy: str = "union") -> pd.DataFrame:
+    """Create an ensemble prediction by majority vote across provided prediction DataFrames.
+
+    pred_dfs: mapping name -> DataFrame containing at least columns `gold` and `pred` and indexed by ID.
+    labels: ordered list of all labels.
+    tie_strategy: 'union'|'first'|'max' behaviour when no label reaches strict majority.
+    Returns a DataFrame with the same index and columns `gold` and `pred` (list of labels).
+    """
+    dfs = list(pred_dfs.values())
+    if not dfs:
+        return pd.DataFrame(columns=["gold", "pred"])  # empty
+    # align on the intersection of IDs
+    ids = dfs[0].index
+    for df in dfs[1:]:
+        ids = ids.intersection(df.index)
+
+    out_rows = []
+    nsys = len(dfs)
+    for i in ids:
+        gold = dfs[0].at[i, "gold"]
+        votes = {}
+        for df in dfs:
+            pred = df.at[i, "pred"]
+            for lab in pred:
+                votes[lab] = votes.get(lab, 0) + 1
+        # labels reaching strict majority (> nsys/2)
+        selected = [l for l, c in votes.items() if c > nsys / 2]
+        if not selected:
+            if tie_strategy == "union":
+                selected = sorted(votes.keys())
+            elif tie_strategy == "first":
+                selected = list(dfs[0].at[i, "pred"]) if len(dfs[0].at[i, "pred"]) else []
+            else:  # max: choose labels with max count
+                if votes:
+                    maxc = max(votes.values())
+                    selected = sorted([l for l, c in votes.items() if c == maxc])
+                else:
+                    selected = []
+        out_rows.append({"id": i, "gold": gold, "pred": selected})
+
+    out = pd.DataFrame(out_rows).set_index("id")
+    return out
+
+
+def score_predictions(df: pd.DataFrame, labels: Iterable[str]) -> dict:
+    """Compute simple summary metrics for a predictions DataFrame with `gold` and `pred` columns.
+
+    Returns a dict with `macro_f1`, `micro_f1`, `exact_match`, `jaccard`,
+    `pred_label_cardinality`, `gold_label_cardinality`.
+    """
+    if df.empty:
+        return {}
+    Y = binarise(df["gold"].tolist(), labels)
+    P = binarise(df["pred"].tolist(), labels)
+    macro, micro = f1s(Y, P)
+    # exact match
+    exact = np.mean([set(g) == set(p) for g, p in zip(df["gold"], df["pred"])])
+    # jaccard per instance
+    jacc = []
+    for g, p in zip(df["gold"], df["pred"]):
+        gs, ps = set(g), set(p)
+        jacc.append(len(gs & ps) / max(1, len(gs | ps)))
+    return {
+        "macro_f1": float(macro),
+        "micro_f1": float(micro),
+        "exact_match": float(exact),
+        "jaccard": float(np.mean(jacc)),
+        "pred_label_cardinality": float(np.mean([len(p) for p in df["pred"]])),
+        "gold_label_cardinality": float(np.mean([len(g) for g in df["gold"]])),
+    }
+
+
+def text_f1(gold: Sequence[str], pred: Sequence[str]) -> float:
+    """Compute the soft F1-like score used in the qualitative comparison cells."""
+    g, p = set(gold), set(pred)
+    if not g and not p:
+        return 1.0
+    return 2 * len(g & p) / max(len(g) + len(p), 1)
+
+
+def compare_predictions(
+    base_df: pd.DataFrame,
+    candidate_df: pd.DataFrame,
+    *,
+    base_name: str = "base",
+    candidate_name: str = "candidate",
+    k: int = 10,
+    english_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Compare two prediction DataFrames and summarize where the candidate helps/hurts.
+
+    The two frames must have aligned indexes and contain at least `text`, `gold`, and `pred`.
+    Positive `delta` means the candidate is better than the base model on that example.
+    """
+    ids = base_df.index.intersection(candidate_df.index)
+    if ids.empty:
+        return pd.DataFrame(columns=["text", "gold", base_name, candidate_name, "delta"])
+
+    cmp = pd.DataFrame(
+        {
+            "text": base_df.loc[ids, "text"],
+            "gold": base_df.loc[ids, "gold"],
+            base_name: base_df.loc[ids, "pred"],
+            candidate_name: candidate_df.loc[ids, "pred"],
+        }
+    )
+    cmp["delta"] = [
+        text_f1(g, q) - text_f1(g, p)
+        for g, p, q in zip(cmp["gold"], cmp[base_name], cmp[candidate_name])
+    ]
+
+    if english_df is not None:
+        cmp["english_text"] = english_df.reindex(ids)["text"]
+
+    print(
+        f"=== {candidate_name} vs {base_name} | improved {(cmp.delta > 0).sum()}, "
+        f"worsened {(cmp.delta < 0).sum()}, same {(cmp.delta == 0).sum()} ==="
+    )
+    with pd.option_context("display.max_colwidth", 80):
+        print("Candidate IMPROVED:")
+        display(cmp.sort_values("delta", ascending=False).head(k))
+        print("Candidate WORSENED:")
+        display(cmp.sort_values("delta").head(k))
+
+    return cmp
