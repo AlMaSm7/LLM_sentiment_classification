@@ -17,6 +17,12 @@ uv.lock
 # XED + OPUS source data can be downloaded/generated again
 data/raw/*
 !data/raw/.gitkeep
+data/processed/
+
+# slurm logs
+logs/
+*.out
+*.err
 
 # experiment outputs
 outputs/*
