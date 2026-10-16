@@ -193,7 +193,6 @@ def main() -> None:
         eval_sets[eval_lang] = rows[: args.limit] if args.limit else rows
 
     variants = list(INSTRUCTION_VARIANTS) if args.sensitivity else [DEFAULT_VARIANT]
-    # README layout: outputs/predictions/ and outputs/metrics/
     pred_dir = PROJECT_ROOT / "outputs" / "predictions" / "prompting" / args.split
     metrics_dir = PROJECT_ROOT / "outputs" / "metrics" / "prompting" / args.split
     summary = []

@@ -152,7 +152,7 @@ def compute_metrics(
     }
 
 
-@torch.inference_mode()  
+@torch.inference_mode()
 def evaluate_dataset(
     model,
     tokenizer,
