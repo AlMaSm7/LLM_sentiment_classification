@@ -71,6 +71,26 @@ def load_training_data(
         load_jsonl(dev_path),
     )
 
+def load_base_model(config: dict[str, Any]):
+    dtype = torch.bfloat16 if config["training"]["bf16"] else torch.float32
+
+    match config["peft"]["method"]:
+        case "lora":
+            return AutoModelForCausalLM.from_pretrained(config["model"]["name"], dtype=dtype)
+        case "qlora":
+            quant = config["peft"].get("quantization", {})
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type=quant.get("quant_type", "nf4"),
+                bnb_4bit_use_double_quant=quant.get("double_quant", True),
+                bnb_4bit_compute_dtype=dtype,
+            )
+            model = AutoModelForCausalLM.from_pretrained(
+                config["model"]["name"], dtype=dtype, quantization_config=bnb_config
+            )
+            return prepare_model_for_kbit_training(model)
+        case _:
+            raise ValueError(f"Unknown peft.method: {config['peft']['method']!r}")
 
 def build_model(
     config: dict[str, Any],
@@ -84,28 +104,7 @@ def build_model(
 
     # right padding is fine during training.
     tokenizer.padding_side = "right"
-
-    dtype = torch.bfloat16 if config["training"]["bf16"] else torch.float32
-
-    match config["peft"]["method"]:
-        case "lora":
-            model = AutoModelForCausalLM.from_pretrained(
-                config["model"]["name"],
-                dtype=dtype,
-            )
-        case "qlora":
-            # TODO: Add configurations to yaml, is this todo anymore no
-            bnb_config = BitsAndBytesConfig(
-                load_in_8bit=True,
-                llm_int8_threshold=6.0,
-                llm_int8_has_fp16_weight=False,
-            )
-            model = AutoModelForCausalLM.from_pretrained(
-                config["model"]["name"], dtype=dtype, quantization_config=bnb_config
-            )
-            model = prepare_model_for_kbit_training(model)
-        case _:
-            raise ValueError(f"Unknown peft.method: {config['peft']['method']!r}")
+    model = load_base_model(config)
 
     lora_config = LoraConfig(
         task_type=TaskType.CAUSAL_LM,

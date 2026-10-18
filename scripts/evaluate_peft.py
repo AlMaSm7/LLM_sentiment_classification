@@ -8,36 +8,14 @@ from pathlib import Path
 import torch
 import yaml
 from peft import PeftModel
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoTokenizer
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from llm_project.peft_evaluation import evaluate_model
+from llm_project.peft_training import load_base_model
 
-
-def load_base_model(config: dict):
-    dtype = torch.bfloat16 if config["training"]["bf16"] else torch.float32
-    method = config["peft"]["method"]
-    if method == "qlora":
-        quant = config["peft"].get("quantization", {})
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type=quant.get("quant_type", "nf4"),
-            bnb_4bit_use_double_quant=quant.get("double_quant", True),
-            bnb_4bit_compute_dtype=dtype,
-        )
-        return AutoModelForCausalLM.from_pretrained(
-            config["model"]["name"],
-            dtype=dtype,
-            quantization_config=bnb_config,
-            device_mparser="auto",
-        )
-    if method == "lora":
-        return AutoModelForCausalLM.from_pretrained(
-            config["model"]["name"], dtype=dtype, device_mparser="auto"
-        )
-    raise ValueError(f"Unknown peft.method: {method!r}")
 
 
 def main() -> None:
@@ -51,7 +29,7 @@ def main() -> None:
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
 
-    experiment = args.experimment
+    experiment = args.experiment
     if experiment is None:
         experiment = yaml.safe_load(open(PROJECT_ROOT / "configs" / "peft.yaml"))["experiment"][
             "name"

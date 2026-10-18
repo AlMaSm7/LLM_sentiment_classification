@@ -28,6 +28,7 @@ shift   # any further arguments (e.g. --overwrite) are passed on
 EXPERIMENTS=(
     "sv english"
     "sv target"
+    "sv bilingual"
 )
 read -r LANGUAGE CONDITION <<< "${EXPERIMENTS[$SLURM_ARRAY_TASK_ID]}"
 echo "Language: $LANGUAGE  Condition: $CONDITION  Split: $SPLIT"
