@@ -29,11 +29,8 @@ def get_evaluation_paths(
 
     data_dir = PROJECT_ROOT / "data" / "processed" / language
 
-    # Target-only training is evaluated on the target language
-    if condition == "target":
-        return {language: data_dir / f"{split}_{language}.jsonl"}
 
-    # English-only and bilingual models are evaluated on English AND the target language
+    # Every model (English-only, target-only, bilingual) is evaluated on English AND the target language
     return {
         "en": data_dir / f"{split}_en.jsonl",
         language: data_dir / f"{split}_{language}.jsonl",
