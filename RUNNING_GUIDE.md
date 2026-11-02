@@ -1,396 +1,337 @@
-# Running guide — from setup to final results
+# Running guide — German and Swedish
 
-This guide describes the current `LLM_sentiment_classification` workflow on the University of Groningen's Hábrók cluster. Run all commands from the **repository root**, unless stated otherwise.
+This guide explains how to run the project on the **Hábrók HPC cluster** using Slurm. Submit commands from the repository root. See [README.md](README.md) for the project objective and folder structure.
 
-The project compares **Qwen2.5-3B-Instruct** (prompting and PEFT) against **EuroLLM-9B-Instruct** (prompting only) for eight-label emotion classification in English and an assigned language (`de` or `sv`). The repository's YAML files currently select **Swedish (`sv`)** for data preparation and prompting; German is supported as a separate target-language experiment.
+## 1. Prepare the Python environment
 
-**Important rules:** Use TRAIN for training and five-shot demonstrations, DEV for checkpoint/prompt selection, and TEST only after all choices have been frozen. Do not mix results from different configurations or treat an old 8-bit adapter as a 4-bit QLoRA adapter.
-
-## 1. Start from the repository root
+Connect to Hábrók and open the repository:
 
 ```bash
-cd /path/to/LLM_sentiment_classification
+cd /scratch/$USER/llm/LLM_sentiment_classification
 module load Python/3.12.3-GCCcore-13.3.0
-mkdir -p outputs/jobs jobs/logs
+mkdir -p outputs/jobs jobs/logs /scratch/$USER/llm/uv_cache /scratch/$USER/llm/tmp
 ```
 
-Use the real path for your Git checkout. Working on `/scratch` is preferable if the repository's `.venv` would otherwise occupy your limited home-directory quota.
-
-### 1.1 Configure caches on scratch — required on Hábrók
-
-**Do this before any `uv sync` or `uv run` command.** The previous `No space left on device` failure occurred because uv downloaded PyTorch/CUDA and `jedi` into `/home2/.../.cache/uv`.
+Install dependencies **once**:
 
 ```bash
-export UV_CACHE_DIR="/scratch/$USER/llm/uv_cache"
-export TMPDIR="/scratch/$USER/llm/tmp"
-export HF_HOME="/scratch/$USER/llm/hf_cache"
-export HF_HUB_CACHE="$HF_HOME/hub"
-export HF_XET_CACHE="$HF_HOME/xet"
-
-mkdir -p "$UV_CACHE_DIR" "$TMPDIR" "$HF_HOME"
-uv cache dir
-```
-
-The last command should print a path under `/scratch`, **not** `/home2`.
-
-If your repository is located in your *home directory*, also keep its Python environment on scratch:
-
-```bash
-export UV_PROJECT_ENVIRONMENT="/scratch/$USER/llm/llm_project_venv"
-```
-
-Set `UV_PROJECT_ENVIRONMENT` in **both your terminal and every Slurm job** if you use it. If your repository and `.venv` already live on scratch, you may omit it.
-
-### 1.2 Install dependencies once
-
-```bash
+UV_CACHE_DIR="/scratch/$USER/llm/uv_cache" \
+TMPDIR="/scratch/$USER/llm/tmp" \
 uv sync --locked --no-dev
-uv run --no-dev --no-sync python -c "import llm_project, torch, transformers, peft, datasets; print('Environment OK')"
 ```
 
-`--no-dev` excludes notebook-only development dependencies such as `ipykernel` and `jedi`. `--no-sync` tells later commands to use the installed environment without downloading or reinstalling dependencies. The tracked `uv.lock` fixes package versions.
+- `--locked` uses the existing `uv.lock` without changing dependencies
+- `--no-dev` skips development-only packages
+- The two temporary variables put downloads in scratch instead of your limited home directory
 
-To run Ruff or a Jupyter kernel later, install the development dependencies separately with `uv sync --locked`. **Do not do this inside GPU training jobs.**
+**You do not need to export Hugging Face or uv cache variables before submitting Slurm jobs.** Your `jobs/*.sh` scripts already set the necessary environment variables, including `HF_HOME`, and load Python. Check that your local copies of those job scripts still contain these settings.
 
-If your home quota is still full, first verify no running job is using the old cache, then optionally clean only the **old home cache**:
+If you **manually run Python scripts** instead of submitting Slurm jobs, set the cache paths in that terminal first:
 
 ```bash
-UV_CACHE_DIR="$HOME/.cache/uv" uv cache clean
-```
-
-This does not delete project source files or saved adapters; packages may need to be fetched again if another environment depended on that cache.
-
-### 1.3 Make all Slurm jobs use the same environment
-
-Check the four job files:
-
-```text
-jobs/prepare_data.sh
-jobs/peft_jobs.sh
-jobs/eval_peft.sh
-jobs/run_prompting.sh
-```
-
-Immediately **after** `module load Python/3.12.3-GCCcore-13.3.0` and **before** the `uv` invocation in **each** file, include:
-
-```bash
-# keep model downloads, python downloads and temporary files on scratch
 export HF_HOME="/scratch/$USER/llm/hf_cache"
 export UV_CACHE_DIR="/scratch/$USER/llm/uv_cache"
 export TMPDIR="/scratch/$USER/llm/tmp"
 mkdir -p "$HF_HOME" "$UV_CACHE_DIR" "$TMPDIR"
-
-# uncomment only if the project virtual environment is on scratch separately
-# export UV_PROJECT_ENVIRONMENT="/scratch/$USER/llm/llm_project_venv"
 ```
 
-Change every job's Python command from:
+There is no need to set separate Hugging Face Hub or Xet cache variables: `HF_HOME` is sufficient here.
+
+### Optional `.env` file
+
+The `.env.example` file shows optional local settings. If you need them:
 
 ```bash
-uv run --locked python scripts/...
+cp .env.example .env
 ```
 
-to:
+Edit `.env` for your environment and keep secrets out of Git. **Creating `.env` does not automatically load its values** into Slurm jobs or Python scripts; the job scripts handle their own environment settings.
+
+
+## 2. Download both models once (Hugging Face cache)
+
+Before running the GPU experiments, download both models to **scratch** once. This is a manual, one-time setup step. The Slurm jobs will reuse the same cached files; they do not need to download the models again.
+
+Do this **after** installing the Python environment from Section 1, on a Hábrók node where downloads are permitted.
+
+### Set the cache location for this manual download
 
 ```bash
-uv run --locked --no-dev --no-sync python scripts/...
+export HF_HOME="/scratch/$USER/llm/hf_cache"
+export UV_CACHE_DIR="/scratch/$USER/llm/uv_cache"
+export TMPDIR="/scratch/$USER/llm/tmp"
+mkdir -p "$HF_HOME" "$UV_CACHE_DIR" "$TMPDIR"
+unset HF_HUB_OFFLINE
 ```
 
-Keep the **existing script name and arguments** after `scripts/...`; change only the uv options. Do not add `--no-dev` or `--no-sync` to `#SBATCH` directives. When a job starts, the environment must already exist from Step 1.2.
+- `HF_HOME` stores the Hugging Face models on scratch instead of in your home directory
+- `UV_CACHE_DIR` and `TMPDIR` keep uv and temporary files on scratch
+- `unset HF_HUB_OFFLINE` allows the initial download to contact Hugging Face
 
-For model loading, the cache under `HF_HOME` must contain both model checkpoints. If downloads are required, fetch them using an internet-enabled, cluster-approved node before turning on offline mode. Do not set `HF_HUB_OFFLINE=1` until the models have been cached.
+### Download Qwen and EuroLLM
 
-## 2. Check configurations and Python files
+```bash
+uv run --locked --no-dev --no-sync python - <<'PYCODE'
+from huggingface_hub import snapshot_download
 
-The repository separates configuration, implementation and execution:
+models = [
+    "Qwen/Qwen2.5-3B-Instruct",
+    "utter-project/EuroLLM-9B-Instruct",
+]
 
-| Location | Responsibility |
+for model in models:
+    path = snapshot_download(repo_id=model)
+    print(f"Cached {model}: {path}")
+PYCODE
+```
+
+- `--locked` uses the existing lockfile
+- `--no-dev` excludes development dependencies
+- `--no-sync` uses the already installed environment without installing packages
+- `snapshot_download()` downloads a model repository into the cache; existing cached files are reused
+
+If Hugging Face asks for authentication or denies access, check the model's page for access requirements, then log in with a read-access token:
+
+```bash
+uv run --locked --no-dev --no-sync python -c 'from huggingface_hub import login; login()'
+```
+
+Do not put your Hugging Face token in the repository.
+
+### Verify both models are cached
+
+```bash
+uv run --locked --no-dev --no-sync python - <<'PYCODE'
+from huggingface_hub import snapshot_download
+
+for model in ["Qwen/Qwen2.5-3B-Instruct", "utter-project/EuroLLM-9B-Instruct"]:
+    path = snapshot_download(repo_id=model, local_files_only=True)
+    print(f"Found {model}: {path}")
+PYCODE
+```
+
+`local_files_only=True` checks the local cache without downloading anything. After both models are present, your Slurm jobs can use `HF_HUB_OFFLINE=1` if their scripts enable offline mode.
+
+**Important:** You only need to set these environment variables manually for commands you run directly in a terminal (such as downloading models or running a Python script yourself). Your Slurm job files already set the cache paths. **Do not add separate `HF_HUB_CACHE` or `HF_XET_CACHE` exports.**
+
+
+## 3. Check the job files
+
+Each Slurm job should invoke the corresponding Python script:
+
+| Slurm job | Python script |
 |---|---|
-| `configs/data.yaml` | Target language, OPUS/XED input and splitting seed |
-| `configs/peft.yaml` | Base Qwen model, LoRA/QLoRA settings, training hyperparameters |
-| `configs/prompting.yaml` | Qwen/EuroLLM models, prompting language, generation and five-shot IDs |
-| `src/llm_project/data_preparation/` | Dataset matching, cleaning, splitting and saving |
-| `src/llm_project/peft_training.py` | Train and save adapters |
-| `src/llm_project/peft_evaluation.py` | Generate PEFT predictions and calculate their metrics |
-| `src/llm_project/prompting.py` | Prompt templates, generation and demonstration selection |
-| `src/llm_project/metrics.py` | **Shared parsing and metrics for prompting and PEFT** |
-| `scripts/` | Commands that start each workflow |
-| `jobs/` | Cluster resource requests |
+| `jobs/run_data_preparation.sh` | `scripts/run_data_preparation.py` |
+| `jobs/run_peft_training.sh` | `scripts/run_peft_training.py` |
+| `jobs/run_peft_evaluation.sh` | `scripts/run_peft_evaluation.py` |
+| `jobs/run_prompting.sh` | `scripts/run_prompting.py` |
+| `jobs/run_results.sh` | `scripts/run_results.py` |
 
-**Changes from the older workflow:** `peft_inference.py` is not needed, `scripts/rescore_predictions.py` is not needed for *new* evaluations, and `src/llm_project/prompt_evaluation.py` has been replaced by the shared `metrics.py` module. Both prompting and PEFT calculate scores immediately after generation, using the same parser and metric implementation. `analyze_results.py` only consolidates already-scored results into report tables and plots.
+For prompting, `run_prompting.sh` must forward additional arguments using `"$@"`, so flags like `--language` and `--models` reach Python. The commands below assume that its first positional argument is `dev` or `test` and that it passes this to Python as `--split`.
 
-Check for outdated references before submitting jobs:
+## 4. Prepare the datasets
+
+In `configs/data.yaml`, select the target (`de` or `sv`). Prepare each language once:
 
 ```bash
-# no output is expected for removed modules
-rg 'peft_inference|rescore_predictions|prompt_evaluation' src scripts jobs tests
-
-uv run --no-dev --no-sync python -m compileall -q src scripts
-uv run --no-dev --no-sync python -m unittest discover -s tests -v
+sbatch jobs/run_data_preparation.sh
 ```
 
-If your repository still contains old imports, correct them to import `gold_labels`, `parse_prediction`, `compute_metrics` and `confusion_matrices` from `llm_project.metrics` before deleting old modules.
+This job creates the processed TRAIN, DEV and TEST datasets. After the first job **finishes**, change `target_language` in `configs/data.yaml` and submit it again for the other target. Do not regenerate the splits after training has started.
 
-## 3. Prepare the aligned dataset (CPU)
-
-Check `configs/data.yaml`. The current configuration uses `target_language: sv`, OPUS OpenSubtitles v2018, a 70/20/10 split and seed 40.
+Check that both language folders exist:
 
 ```bash
-sbatch jobs/prepare_data.sh
+ls data/processed/de/
+ls data/processed/sv/
+```
+
+## 5. Train and evaluate PEFT
+
+The following commands assume the Slurm array maps `0–2` to German and `3–5` to Swedish, with conditions `english`, `target` and `bilingual`. **Check that mapping in your job scripts before submitting.**
+
+Train the adapters:
+
+```bash
+sbatch --array=0-2%2 jobs/run_peft_training.sh
+sbatch --array=3-5%2 jobs/run_peft_training.sh
+```
+
+- `--array=0-2%2` runs the three German conditions, at most two concurrently
+- `--array=3-5%2` does the same for Swedish
+
+After training finishes, evaluate on DEV:
+
+```bash
+sbatch --array=0-2%2 jobs/run_peft_evaluation.sh dev
+sbatch --array=3-5%2 jobs/run_peft_evaluation.sh dev
+```
+
+- `dev` selects the development split
+- Predictions go to `outputs/predictions/peft/dev/` and metrics to `outputs/metrics/peft/dev/`
+
+## 6. Configure prompting once
+
+There is only **one** prompting configuration: `configs/prompting.yaml`. Check the model roles:
+
+```yaml
+models:
+  - name: Qwen/Qwen2.5-3B-Instruct
+    role: primary
+  - name: utter-project/EuroLLM-9B-Instruct
+    role: secondary
+```
+
+Store the five fixed examples **separately for each language**, under `prompting.five_shot_ids`:
+
+```yaml
+prompting:
+  id_key: alignment_id
+  five_shot_ids:
+    de: []  # replace with five German alignment IDs
+    sv: []  # replace with five Swedish alignment IDs
+  selection:
+    k: 5
+    seed: 42
+    min_words: 5
+    max_words: 20
+    max_labels: 3
+    min_single: 1
+```
+
+The lists shown above are placeholders. Keep your existing selection settings and paste in **actual IDs from your TRAIN data**.
+
+To find the five IDs for each target, run these **one-time manual commands** (with the manual cache exports from Section 1):
+
+```bash
+uv run --locked --no-dev --no-sync python scripts/run_prompting.py --language de --select-ids
+uv run --locked --no-dev --no-sync python scripts/run_prompting.py --language sv --select-ids
+```
+
+- `--language de` / `--language sv` chooses the target pair; it **overrides any default `language:` in YAML**
+- `--select-ids` prints suitable aligned five-shot examples and exits without model inference
+
+Copy the printed IDs into `five_shot_ids.de` and `five_shot_ids.sv`. Once both lists are filled, **you no longer need to edit `prompting.yaml` when switching languages**.
+
+## 7. Run prompting on DEV
+
+Run both models for German and Swedish:
+
+```bash
+sbatch jobs/run_prompting.sh dev --language de --sensitivity --models primary --skip-existing
+sbatch jobs/run_prompting.sh dev --language de --sensitivity --models secondary --skip-existing
+sbatch jobs/run_prompting.sh dev --language sv --sensitivity --models primary --skip-existing
+sbatch jobs/run_prompting.sh dev --language sv --sensitivity --models secondary --skip-existing
+```
+
+- `dev` evaluates the development split
+- `--language de/sv` selects the language pair and its five-shot IDs
+- `--sensitivity` evaluates all **four prompt versions** rather than only `default`
+- `--models primary/secondary` selects Qwen or EuroLLM
+- `--skip-existing` skips a run when **both** its predictions and metrics already exist
+
+For each target, there are **32 DEV experiments**: two models × two input languages × two shot settings × four prompt versions. The two targets can now run independently because their datasets, five-shot IDs and experiment filenames are language-specific.
+
+Check counts when the jobs finish:
+
+```bash
+find outputs/metrics/prompting/dev -maxdepth 1 -name '*__de__*.json' | wc -l  # 32
+find outputs/metrics/prompting/dev -maxdepth 1 -name '*__sv__*.json' | wc -l  # 32
+```
+
+Optional smoke test (manual script, inside a GPU allocation):
+
+```bash
+uv run --locked --no-dev --no-sync python scripts/run_prompting.py --language sv --split dev --models primary --limit 20
+```
+
+- `--split dev` selects DEV when calling the Python script directly
+- `--limit 20` processes only 20 examples and writes to a separate `dev_smoke/` folder; do not count these as full evaluations
+
+## 8. Select the best DEV prompts
+
+After all prompting DEV runs are finished:
+
+```bash
+sbatch jobs/run_results.sh --target both --split dev --select
+```
+
+- `--target both` analyzes German and Swedish
+- `--split dev` reads DEV results
+- `--select` chooses the highest-scoring prompt wording using DEV Micro F1
+
+This creates two **independent** files:
+
+```text
+outputs/report/selected_prompt_variants_de.json
+outputs/report/selected_prompt_variants_sv.json
+```
+
+It also generates the combined DEV prompt-sensitivity figure. You do not need to rerun any models in this step.
+
+## 9. Run the final TEST evaluations
+
+Only run TEST after DEV selection has finished. **Do not use `--sensitivity` or `--limit` on TEST.**
+
+Prompting TEST:
+
+```bash
+sbatch jobs/run_prompting.sh test --language de --models primary --skip-existing
+sbatch jobs/run_prompting.sh test --language de --models secondary --skip-existing
+sbatch jobs/run_prompting.sh test --language sv --models primary --skip-existing
+sbatch jobs/run_prompting.sh test --language sv --models secondary --skip-existing
+```
+
+- `test` selects the held-out test split
+- `--language` chooses the target, and the code reads its `selected_prompt_variants_de.json` or `_sv.json`
+- Only the DEV-selected wording is evaluated for each model and shot setting
+
+PEFT TEST:
+
+```bash
+sbatch --array=0-2%2 jobs/run_peft_evaluation.sh test
+sbatch --array=3-5%2 jobs/run_peft_evaluation.sh test
+```
+
+- `test` selects the held-out split; the array indices select language and training condition
+
+Expected metric files **per language pair**: eight TEST prompting runs and five TEST PEFT runs. Check them:
+
+```bash
+find outputs/metrics/prompting/test -maxdepth 1 -name '*__de__*.json' | wc -l  # 8
+find outputs/metrics/prompting/test -maxdepth 1 -name '*__sv__*.json' | wc -l  # 8
+find outputs/metrics/peft/test -maxdepth 1 -name '*__de__*.json' | wc -l       # 5
+find outputs/metrics/peft/test -maxdepth 1 -name '*__sv__*.json' | wc -l       # 5
+```
+
+## 10. Generate the final tables and plots
+
+Once all TEST evaluations have finished:
+
+```bash
+sbatch jobs/run_results.sh --target both --split test
+```
+
+- `--target both` includes DE and SV
+- `--split test` reads TEST metrics and predictions; it **does not perform inference**
+
+Look in `outputs/report/` for the combined Micro F1 chart, DEV prompt-sensitivity chart, per-emotion heatmap, main comparison table, language-transfer table, error examples, output-behavior table and runtime CSV. The exact filenames are listed in [README.md](README.md).
+
+## 11. Check jobs and troubleshoot
+
+```bash
 squeue -u "$USER"
+sacct -j <JOBID> --format=JobID,State,ExitCode
 ```
 
-After the job has completed successfully, check:
-
-```bash
-ls -lh data/processed/sv/
-```
-
-Expected files include:
-
-```text
-data/processed/sv/
-├── train_en.jsonl
-├── train_sv.jsonl
-├── train_bilingual.jsonl
-├── dev_en.jsonl
-├── dev_sv.jsonl
-├── dev_bilingual.jsonl
-├── test_en.jsonl
-├── test_sv.jsonl
-├── test_bilingual.jsonl
-└── split_manifest.json
-```
-
-Data extraction requires access to the source files and may require network access. If downloads from compute nodes fail, use the transfer/download procedure permitted by Hábrók.
-
-**Alignment limitation:** The implementation builds IDs using OPUS document/sentence information. Before making a strict compliance claim in the report, verify their provenance against the **original XED alignment identifiers** required in the course brief. Also check for duplicate lines across splits.
-
-To prepare German, set `target_language: de` in `configs/data.yaml`, submit and **finish** a separate preparation job, then restore `sv` if needed. **Never modify a shared YAML file while a job using it is pending or running**, because it reads the file at runtime.
-
-If the correct processed datasets are already present, skip this step. Do not change or regenerate the split midway through experimental comparison.
-
-## 4. Verify the model and PEFT configuration
-
-In `configs/peft.yaml`, confirm the experiment name, model and training settings. The reviewed configuration uses Qwen2.5-3B-Instruct, LoRA targets `q_proj` and `v_proj`, rank 16, alpha 32, dropout 0.05, seed 42, and `peft.method: qlora` with NF4 **4-bit** quantization.
-
-In `configs/prompting.yaml`, confirm that the target language and both models are correct. The configuration uses Qwen2.5-3B-Instruct (primary), EuroLLM-9B-Instruct (second), greedy decoding, and five fixed aligned demonstration IDs.
-
-Do not rename an older 8-bit adapter as 4-bit QLoRA. If you changed the actual training method or prompt format, train a new adapter under a distinct experiment name rather than silently overwriting a previous run.
-
-## 5. Train PEFT adapters (GPU)
-
-`jobs/peft_jobs.sh` maps the six Slurm indices as follows:
-
-| Array index | Target | Training condition |
-|---|---|---|
-| 0 | German | English-only |
-| 1 | German | German-only |
-| 2 | German | Bilingual English/German |
-| 3 | Swedish | English-only |
-| 4 | Swedish | Swedish-only |
-| 5 | Swedish | Bilingual English/Swedish |
-
-Submit the jobs **only after** installing the Python environment in Step 1 and preparing the relevant target-language dataset.
-
-```bash
-# swedish only
-sbatch --array=3-5%2 jobs/peft_jobs.sh
-
-# german only
-sbatch --array=0-2%2 jobs/peft_jobs.sh
-
-# both languages, if both processed datasets are ready
-sbatch --array=0-5%2 jobs/peft_jobs.sh
-```
-
-Check the job statuses:
-
-```bash
-squeue -u "$USER"
-sacct -j <JOB_ID> --format=JobID,State,Elapsed,ExitCode
-```
-
-Look for `COMPLETED` with exit code `0:0` and a saved adapter in `outputs/models/<target>/<condition>/<experiment>/`.
-
-**If a job fails while downloading torch, Triton, CUDA, or `jedi`**, confirm that the Slurm job exported `UV_CACHE_DIR` to scratch and ran `uv run --no-dev --no-sync`, and that the one-time `uv sync --no-dev` succeeded. Do not keep resubmitting the same job until this is fixed.
-
-If the adapters already exist and match the current dataset/training configuration, skip training.
-
-## 6. Evaluate the PEFT adapters on DEV (GPU)
-
-PEFT evaluation loads the saved adapters, generates predictions on the relevant language partitions and calculates all required metrics immediately using `llm_project.metrics`.
-
-```bash
-# swedish
-sbatch --array=3-5%2 jobs/eval_peft.sh dev
-
-# german
-sbatch --array=0-2%2 jobs/eval_peft.sh dev
-```
-
-Each target language produces **five** PEFT evaluation runs:
-
-- English-trained → English and target-language inputs
-- Target-trained → target-language input
-- Bilingual-trained → English and target-language inputs
-
-After all three array tasks for a target finish, verify:
-
-```bash
-ls outputs/predictions/peft/dev/
-ls outputs/metrics/peft/dev/
-```
-
-There should be one prediction JSONL and one metric JSON per evaluated language/condition. **There is no separate `rescore_predictions.py` step.**
-
-Avoid rerunning completed evaluations unless necessary. `scripts/evaluate_peft.py` supports `--overwrite` if you intentionally need to replace an earlier run. Check that the saved model's `config_used.yaml` matches the adapter you are evaluating.
-
-## 7. Run zero-shot/five-shot prompting on DEV (GPU)
-
-The prompting script loads the original models (no fine-tuning), constructs zero-shot or five-shot prompts, generates responses, parses their JSON emotion labels and immediately calculates the same metrics as PEFT.
-
-For Swedish, check `configs/prompting.yaml` has `language: sv` and exactly five valid training alignment IDs. To inspect or regenerate five-shot candidates:
-
-```bash
-uv run --no-dev --no-sync python scripts/run_prompting.py --select-ids
-```
-
-Put the chosen five IDs into `prompting.five_shot_ids` and **freeze them** before DEV comparisons. The same IDs are used for the English and target-language sides; the subtitle language changes but the aligned examples do not.
-
-For a small **GPU** smoke test, submit through Slurm; the results go to a separate `dev_smoke` folder:
-
-```bash
-sbatch jobs/run_prompting.sh dev --limit 20 --models primary
-```
-
-Run full DEV prompting and wording sensitivity on both models:
-
-```bash
-sbatch jobs/run_prompting.sh dev --sensitivity --models primary --skip-existing
-sbatch jobs/run_prompting.sh dev --sensitivity --models second --skip-existing
-```
-
-The DEV sensitivity analysis tests four instruction variants for zero- and five-shot prompting, for both models and both evaluation languages. Files are written under:
-
-```text
-outputs/predictions/prompting/dev/
-outputs/metrics/prompting/dev/
-```
-
-The stored metric JSON files include Micro F1, sample Jaccard, Macro F1, Micro precision/recall, Hamming loss, exact match, per-emotion scores, malformed-output rate, and diagnostic label-cardinality statistics.
-
-## 8. Select prompt wording using DEV
-
-Only after **all DEV prompting runs are complete**:
-
-```bash
-uv run --no-dev --no-sync python scripts/analyze_results.py --target sv --split dev --select
-```
-
-Replace `sv` with `de` for a German experiment. This selects a prompt variant separately for each model and shot condition using the **mean DEV Micro F1 across English and target-language inputs**, with sample Jaccard as a tiebreaker. The choices are saved to:
-
-```text
-outputs/report/selected_prompt_variants.json
-```
-
-The DEV summary also generates `outputs/report/<target>_dev_results.csv`, prompt-sensitivity tables/plots, per-emotion tables/figures, dataset summaries and qualitative comparisons.
-
-**Do not change prompts or demonstration IDs after this step.** TEST must use the saved selection. If an expected DEV run is missing, finish it before selecting.
-
-## 9. Run the held-out TEST evaluation once
-
-Use TEST only when your model choices, prompts, selection procedure and training checkpoints are frozen.
-
-For Swedish:
-
-```bash
-# prompting: selected versions only
-sbatch jobs/run_prompting.sh test --models primary --skip-existing
-sbatch jobs/run_prompting.sh test --models second --skip-existing
-
-# peft: all three trained conditions
-sbatch --array=3-5%2 jobs/eval_peft.sh test
-```
-
-For German, switch `configs/prompting.yaml` to `language: de` **before submitting** the prompting jobs, set the German five-shot IDs, ensure German DEV selection already exists, then run:
-
-```bash
-sbatch jobs/run_prompting.sh test --models primary --skip-existing
-sbatch jobs/run_prompting.sh test --models second --skip-existing
-sbatch --array=0-2%2 jobs/eval_peft.sh test
-```
-
-Wait for all jobs to finish. For each target, the required TEST matrix has **8 prompting runs plus 5 PEFT runs**. Each PEFT evaluation job already writes its metric JSON; **do not run a rescoring script**.
-
-## 10. Generate results for the report
-
-For Swedish:
-
-```bash
-uv run --no-dev --no-sync python scripts/analyze_results.py --target sv --split test
-```
-
-For German:
-
-```bash
-uv run --no-dev --no-sync python scripts/analyze_results.py --target de --split test
-```
-
-The analysis collects saved metric files, verifies the complete TEST matrix and writes report-ready tables and figures in `outputs/report/`, including:
-
-```text
-<target>_test_results.csv
-<target>_test_per_emotion.csv
-<target>_test_qualitative.csv
-<target>_test_runtime.csv
-<target>_test_micro_f1_*.png
-<target>_test_per_emotion_*.png
-```
-
-The report should compare zero-/five-shot prompting with the three PEFT conditions; discuss English–target gaps, prompt sensitivity, per-emotion behavior, malformed outputs, label-cardinality differences, representative improvements/worsenings and measured computational cost.
-
-Do not generate fabricated results when an experiment has not finished. The optional `--allow-incomplete` flag is for debugging partial runs, **not** for the final report.
-
-## 11. Final report and GitHub reproducibility checks
-
-The LaTeX source is in `report/report.tex`. Fill any verification markers with genuine experiment outputs, add real examples and retain the course brief's eight main sections. The required report length is **8–12 pages excluding references and appendices**.
-
-Optional local compilation:
-
-```bash
-cd report
-pdflatex -interaction=nonstopmode report.tex
-pdflatex -interaction=nonstopmode report.tex
-cd ..
-```
-
-Before pushing, from the project root:
-
-```bash
-uv run --no-dev --no-sync python -m compileall -q src scripts
-uv run --no-dev --no-sync python -m unittest discover -s tests -v
-uv lock --check
-git status --short
-git check-ignore .env data/raw/example.tsv data/processed/sample.jsonl outputs/models/weights.bin outputs/jobs/job.out
-```
-
-Track Python code, Slurm scripts, YAML settings, README, this guide, tests, `pyproject.toml`, `uv.lock`, and the LaTeX source. **Do not commit** secrets, `.env`, model weights, raw/processed datasets, cached models, job logs, or generated prediction/metric artifacts.
-
-## Troubleshooting
-
-**`No space left on device` / `jedi` / CUDA download errors** — The uv cache still points to home, or the job is trying to sync its environment. Set `UV_CACHE_DIR` and `TMPDIR` under `/scratch`, run `uv sync --locked --no-dev` once, and use `uv run --no-dev --no-sync` in all jobs.
-
-**`ModuleNotFoundError: llm_project`** — Run from the repository root and check that `uv sync --locked --no-dev` succeeded. Confirm the job uses the same virtual environment as your login shell.
-
-**`No such file or directory: outputs/jobs/...`** — Create `outputs/jobs` **before** submitting. Slurm opens its log paths before your script begins.
-
-**Hugging Face model download fails in the job** — Cache the model on an approved internet-enabled node first. All jobs must share the same `HF_HOME`.
-
-**Missing adapter** — Check that the matching target/condition/experiment training task finished successfully and that the `configs/peft.yaml` experiment name matches the saved directory (or pass `--experiment` when supported).
-
-**Duplicate evaluation output** — Existing prediction files are protected against accidental re-evaluation. Use `--skip-existing` for prompting and `--overwrite` only when intentionally replacing a PEFT result.
-
-**Outdated imports** — Remove any references to `peft_inference`, `rescore_predictions` or `prompt_evaluation` after switching to the shared `llm_project.metrics` module.
-
-**Results missing in analysis** — Confirm all JSON metrics exist in `outputs/metrics/{prompting,peft}/{dev,test}/` and are for the correct target language. DEV selection must be completed before TEST prompting.
+- `squeue` shows queued/running jobs; `sacct` shows whether a finished job succeeded or failed
+- Replace `<JOBID>` with the ID printed by `sbatch`
+
+Common problems:
+
+- **No EuroLLM output:** confirm `role: secondary` and `--models secondary`
+- **Missing five-shot IDs:** populate `prompting.five_shot_ids.de` and `.sv`; don't reuse one language's IDs for the other
+- **Missing TEST selection:** run DEV selection first and check the language-specific JSON file
+- **Incomplete TEST results:** wait for all 8 prompting and 5 PEFT results per language
+- **Home directory full:** use scratch for the uv installation cache, and confirm `HF_HOME` is set in the Slurm job
+- **Incorrect language:** ensure the Slurm script forwards `"$@"` so `--language` reaches `run_prompting.py`

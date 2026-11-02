@@ -1,91 +1,98 @@
 # Cross-lingual multi-label emotion classification
 
-A reproducible student project comparing zero-shot prompting, five-shot prompting, and parameter-efficient fine-tuning (PEFT) on matched English–target-language XED movie subtitles. The main YAML configurations currently select **Swedish (`sv`)** as the assigned language. The pipeline also supports German (`de`) as a separately configured experiment.
+This project investigates whether **parameter-efficient fine-tuning (PEFT)** improves emotion classification compared with **zero-shot and five-shot prompting**, and how much the wording of a prompt affects performance.
 
-**Primary model:** `Qwen/Qwen2.5-3B-Instruct`  
-**Second prompting model:** `utter-project/EuroLLM-9B-Instruct`  
-**Labels:** anger, anticipation, disgust, fear, joy, sadness, surprise, trust
+We study two language pairs separately: **English–German (DE)** and **English–Swedish (SV)**, using XED-based data. A text may contain more than one of the eight emotions: `anger`, `anticipation`, `disgust`, `fear`, `joy`, `sadness`, `surprise`, and `trust`.
 
-## Repository layout
+## Models and experiments
+
+| Model | Role | Methods |
+|---|---|---|
+| Qwen2.5-3B-Instruct | `primary` | PEFT, zero-shot, five-shot |
+| EuroLLM-9B-Instruct | `secondary` | Zero-shot, five-shot |
+
+PEFT has three training conditions: **English-only**, **target-language-only**, and **bilingual**. Prompting compares four instruction versions: `default`, `paraphrase`, `no_format_example`, and `terse`.
+
+We use **DEV** to compare prompt wordings and select the best variant. We evaluate the selected variants on **TEST** without further tuning. Our main performance measure is **Micro F1**, supported by Macro F1, sample Jaccard, per-emotion F1, and malformed-output rates.
+
+## Project structure
 
 ```text
-configs/                       data, prompting and PEFT settings
-src/llm_project/
-  constants.py                 shared label names and data-source URL
-  data_preparation/            XED/OPUS matching and fixed stratified splits
-  peft_training.py             LoRA/QLoRA model setup and fine-tuning
-  peft_evaluation.py           PEFT inference and raw prediction export
-  peft_inference.py            small inference examples
-  prompting.py                 exact prompts, demonstrations and shared parser
-  prompt_evaluation.py         single scoring implementation for both methods
-scripts/
-  prepare_data.py              data preparation entry point
-  run_peft.py                  training and development evaluation
-  evaluate_peft.py             reload and evaluate an existing adapter
-  rescore_predictions.py      apply shared parser and metrics to PEFT outputs
-  run_prompting.py            zero-shot, five-shot and wording variants
-  analyze_results.py          comparison tables, plots and qualitative analysis
-jobs/                          CPU and GPU Slurm scripts
-notebooks/                     optional exploratory analysis, with outputs removed
-report/report.tex              Overleaf-ready technical report draft
-README.md                      project overview
-RUNNING_GUIDE.md               full command sequence
-pyproject.toml / uv.lock        environment and pinned dependencies
+configs/
+  data.yaml                  # dataset preparation settings
+  peft.yaml                  # fine-tuning settings
+  prompting.yaml             # models, decoding and five-shot example IDs
+
+scripts/                     # command-line entry points
+  run_data_preparation.py
+  run_peft_training.py
+  run_peft_evaluation.py
+  run_prompting.py
+  run_results.py
+
+src/llm_project/             # implementation
+  data_preparation/
+  peft_training.py
+  peft_evaluation.py
+  prompting.py
+  results.py
+  metrics.py                  # shared parser and metrics
+  notebook_utils.py
+  constants.py
+  utils.py
+
+jobs/                        # Slurm scripts for Hábrók
+  run_data_preparation.sh
+  run_peft_training.sh
+  run_peft_evaluation.sh
+  run_prompting.sh
+  run_results.sh
+
+outputs/                     # generated models, predictions, scores and figures
+.env.example                 # optional local environment template
+README.md
+RUNNING_GUIDE.md
+pyproject.toml
+uv.lock
 ```
 
-Generated datasets, model weights, predictions, caches, Slurm logs, and credentials are **not committed**. The uploaded archive contained a `.git` directory and `.env`; neither is included in the reviewed deliverable.
+Files in `scripts/` accept command-line arguments. The actual processing is implemented in `src/llm_project/`. Prompting and PEFT share the same output parser and scoring functions in `metrics.py`.
 
-## Reproduction in brief
+## Workflow
 
-Run commands from the repository root:
+1. Prepare the English–German and English–Swedish datasets.
+2. Train Qwen PEFT adapters for the three training conditions in each language pair.
+3. Evaluate PEFT on DEV and compare zero-shot/five-shot prompting across four prompt versions on DEV.
+4. Select the best prompt version for **each target language**, using DEV results only.
+5. Run the final prompting and PEFT evaluations on TEST.
+6. Generate combined German/Swedish result tables and figures.
 
-```bash
-module load Python/3.12.3-GCCcore-13.3.0
-uv sync --locked
-mkdir -p outputs/jobs jobs/logs
-sbatch jobs/prepare_data.sh
-```
+For each target language, prompting produces **32 DEV experiments** and **8 selected TEST experiments**. PEFT contributes **5 TEST evaluations** per target. The aligned English examples may differ between German and Swedish, so we treat these as separate evaluation cohorts.
 
-After data preparation has completed, run the appropriate training and evaluation jobs. See **[RUNNING_GUIDE.md](RUNNING_GUIDE.md)** for the full experiment matrix, prompt selection, evaluation, and report generation. Check the cluster's internet policy before downloading XED/OPUS resources from compute nodes.
+## Before running
 
-## Data and experimental design
+- Install the project environment and check your Hábrók Slurm scripts as explained in [RUNNING_GUIDE.md](RUNNING_GUIDE.md).
+- Check `configs/data.yaml` and `configs/peft.yaml` before preparing data or training.
+- Check the model names and roles in `configs/prompting.yaml`. Use `primary` and `secondary`.
+- Store **five aligned demonstration IDs for each target language** under `prompting.five_shot_ids.de` and `prompting.five_shot_ids.sv`. The running guide explains how to find them.
+- Select the prompting language with **`--language de` or `--language sv`**. You no longer need to change `language:` in the YAML file between prompting jobs.
+- `.env.example` is a template for optional local settings. Copy it to `.env` only if needed, fill in your values, and never commit secrets. A `.env` file is not automatically loaded by Python or Slurm.
 
-The pipeline uses XED projected annotations and matched English–target-language OpenSubtitles v2018 pairs. The target-language XED labels are projected onto subtitles; the English side inherits the same labels for matched pairs. The data preparation code uses Unicode NFKC and whitespace normalization, removes conflicting and ambiguous matches, and creates a fixed **70/20/10 train/DEV/TEST split** using multi-label stratification (seed **40**). Training and five-shot selection use seed **42**.
+**All setup instructions and exact commands are in [RUNNING_GUIDE.md](RUNNING_GUIDE.md).**
 
-**Important provenance caveat:** the current pipeline constructs identifiers from OPUS document and sentence IDs; the brief requires original XED alignment IDs for the split. These are not proven equivalent. Verify the original source-ID relationship before claiming strict compliance with that requirement. Do not use the held-out TEST data to choose prompts or hyperparameters.
+## Expected results
 
-PEFT uses three training conditions: English-only, target-language-only, and bilingual. The required evaluation matrix has five PEFT comparisons per target language: English-only on both languages, target-only on target, and bilingual on both. Prompting uses Qwen and EuroLLM with zero/five shots on both input languages. Four wording variants are compared on DEV, and one selected variant per model and prompting condition is frozen before TEST.
+The analysis reads saved predictions and metrics and writes report-ready files to `outputs/report/`. The main outputs are:
 
-## Metrics and results
+| Output | What it shows |
+|---|---|
+| `combined_test_main_table.tex` / `combined_test_main_results.csv` | PEFT vs zero-shot vs five-shot results for DE and SV |
+| `combined_test_method_comparison.png` | Main Micro F1 comparison |
+| `combined_dev_prompt_sensitivity.png` | Effect of the four prompt wordings on DEV |
+| `combined_test_per_emotion_f1.png` | F1 score for each emotion |
+| `combined_test_language_transfer_table.tex` | English vs German/Swedish evaluation differences |
+| `combined_test_qualitative_candidates.csv` | Examples of correct and incorrect predictions |
+| `combined_test_output_behavior_table.tex` | Malformed and empty model outputs |
+| `combined_test_runtime.csv` | Recorded runtime information |
 
-All **reported** metrics must come from the shared implementation in `src/llm_project/prompt_evaluation.py`. Both prompting and PEFT use the same strict JSON-list parser from `src/llm_project/prompting.py` and are scored on eight binary labels in fixed order. Invalid formats and unpermitted label names become malformed empty predictions; changing the parser requires rescoring existing raw outputs. Primary metrics: Micro F1 and **sample-averaged Jaccard**. Secondary: Macro F1, micro precision/recall, and Hamming loss. Diagnostic: per-emotion precision/recall/F1/support, exact match, label cardinality, empty predictions, and malformed-rate. Zero division is set to zero.
-
-The standalone PEFT training job additionally prints its own legacy metrics; **do not mix its micro-averaged Jaccard with the shared sample Jaccard**. Run `scripts/rescore_predictions.py` and use only those common metrics for report comparisons.
-
-`uv run python scripts/analyze_results.py --target sv --split test` produces comparison tables, per-emotion tables, prompt-sensitivity figures, test error examples, and Micro F1 plots in `outputs/report/`. The script also creates a runtime table where hardware metadata is available. It does not invent missing data; it requires the corresponding saved experiment outputs.
-
-## Scientific and implementation caveats
-
-- The original archive's `qlora` branch used **8-bit** loading despite an NF4 YAML configuration. The reviewed code switches that branch to **4-bit NF4**. Previously trained adapters do **not** become 4-bit QLoRA merely by updating code. Retrain if you want to claim the corrected setup
-- Exact OPUS--XED ID provenance is still unverified
-- The source ZIP did not contain the final metric artifacts, so the current report's numeric results remain provisional until checked
-- Runtime and peak GPU memory should be recorded from new jobs or Slurm accounting rather than guessed
-- Changing prompts, parsers, splits or quantization creates a new experimental condition; do not silently combine old and new scores
-
-## Checks
-
-```bash
-PYTHONPATH=src uv run python -m unittest discover -s tests -v
-uv run python -m compileall -q src scripts
-uv run ruff check src scripts
-uv run ruff format --check src scripts
-```
-
-Ruff formatting/lint may identify additional style issues in legacy modules. Syntax and small CPU-only tests have been verified for the reviewed code, but full GPU runs and source-data downloads require the Hábrók environment.
-
-## References
-
-- [XED dataset](https://github.com/Helsinki-NLP/XED)
-- [OpusTools](https://github.com/Helsinki-NLP/OpusTools)
-- [PEFT](https://huggingface.co/docs/peft)
-- [Course report source](report/report.tex)
+DEV prompt selections are kept separately in `selected_prompt_variants_de.json` and `selected_prompt_variants_sv.json`. The final analysis does not rerun model inference.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any, cast
 
@@ -138,11 +139,8 @@ def select_prompts(sensitivity: pd.DataFrame, target: str, report_dir: Path) -> 
             key = f"{model}__{target}__{input_lang}__{method}"
             selections[key] = str(best["variant"])
 
-    path = report_dir / "selected_prompt_variants.json"
-    if path.exists():
-        previous = json.loads(path.read_text(encoding="utf-8"))
-        previous.update(selections)
-        selections = previous
+    # each target has its own selection file to avoid concurrent writes
+    path = report_dir / f"selected_prompt_variants_{target}.json"
     path.write_text(json.dumps(selections, indent=2), encoding="utf-8")
     print(f"Saved DEV prompt choices to {path}")
     return selections
@@ -489,7 +487,7 @@ def generate_results(
     if split == "dev" and not sensitivity.empty:
         sensitivity.to_csv(report_dir / f"{target}_dev_prompt_sensitivity.csv", index=False)
 
-    selections_path = report_dir / "selected_prompt_variants.json"
+    selections_path = report_dir / f"selected_prompt_variants_{target}.json"
     if select:
         selections = select_prompts(sensitivity, target, report_dir)
     elif selections_path.exists():
@@ -537,3 +535,551 @@ def generate_results(
             ["model", "method", "training", "input_language", "micro_f1", "sample_jaccard"]
         ].to_string(index=False)
     )
+
+
+# report exports for the two target-language cohorts
+# keep the german and swedish cohorts separate because their english subsets can differ
+
+TARGETS = ("de", "sv")
+PROMPT_VARIANTS = ("default", "paraphrase", "no_format_example", "terse")
+SHOT_METHODS = ("zero_shot", "five_shot")
+TARGET_NAMES = {"de": "German", "sv": "Swedish"}
+
+
+def display_method(run: dict[str, Any]) -> str:
+    if run["family"] == "prompting":
+        return "Zero-shot" if run["method"] == "zero_shot" else "Five-shot"
+    return {"english": "PEFT English", "target": "PEFT target", "bilingual": "PEFT bilingual"}.get(
+        run["training"], f"PEFT {run['training']}"
+    )
+
+
+def display_model(model: str) -> str:
+    return "EuroLLM" if "EuroLLM" in model else ("Qwen" if "Qwen" in model else model)
+
+
+def target_records(runs: list[dict[str, Any]], target: str, language: str) -> list[dict[str, Any]]:
+    return [r for r in runs if r["target_language"] == target and r["input_language"] == language]
+
+
+def find_run(
+    runs: list[dict[str, Any]],
+    target: str,
+    language: str,
+    model_name: str,
+    method: str,
+    training: str = "none",
+) -> dict[str, Any] | None:
+    found = [
+        r
+        for r in target_records(runs, target, language)
+        if display_model(r["model"]) == model_name
+        and r["method"] == method
+        and (method != "peft" or r["training"] == training)
+    ]
+    if len(found) > 1:
+        raise ValueError(
+            f"Duplicate results for {target}/{language}/{model_name}/{method}/{training}"
+        )
+    return found[0] if found else None
+
+
+def latex_escape(value: object) -> str:
+    # only escape literal text; numerical columns are formatted separately
+    mapping = {
+        "\\": r"\textbackslash{}",
+        "&": r"\&",
+        "%": r"\%",
+        "$": r"\$",
+        "#": r"\#",
+        "_": r"\_",
+        "{": r"\{",
+        "}": r"\}",
+        "~": r"\textasciitilde{}",
+        "^": r"\textasciicircum{}",
+    }
+    return "".join(mapping.get(character, character) for character in str(value))
+
+
+def number(value: object, digits: int = 3) -> str:
+    # convert values safely, including numpy scalars and pandas missing values
+    try:
+        numeric = float(str(value))
+    except (TypeError, ValueError):
+        return "--"
+
+    if not math.isfinite(numeric):
+        return "--"
+
+    return f"{numeric:.{digits}f}"
+
+
+def write_latex_table(path: Path, columns: str, headers: list[str], rows: list[list[str]]) -> None:
+    # export only a tabular so captions and labels stay in report/report.tex
+    lines = [
+        r"\begin{tabular}{" + columns + "}",
+        r"\toprule",
+        " & ".join(headers) + " " + "\\" * 2,
+        r"\midrule",
+    ]
+    for row in rows:
+        lines.append(" & ".join(row) + " " + "\\" * 2)
+    lines.extend([r"\bottomrule", r"\end{tabular}"])
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def combined_main_table(runs: list[dict[str, Any]], folder: Path) -> None:
+    # every english score belongs to its own aligned target cohort
+    rows = []
+    csv_rows = []
+    methods = [
+        ("Qwen", "zero_shot", "none"),
+        ("Qwen", "five_shot", "none"),
+        ("Qwen", "peft", "english"),
+        ("Qwen", "peft", "target"),
+        ("Qwen", "peft", "bilingual"),
+        ("EuroLLM", "zero_shot", "none"),
+        ("EuroLLM", "five_shot", "none"),
+    ]
+    for target in TARGETS:
+        for model, method, training in methods:
+            en = find_run(runs, target, "en", model, method, training)
+            local = find_run(runs, target, target, model, method, training)
+            if method == "peft" and training == "target":
+                en = None  # not part of the required evaluation matrix
+            label = display_method(
+                local
+                or en
+                or {
+                    "family": "peft" if method == "peft" else "prompting",
+                    "method": method,
+                    "training": training,
+                }
+            )
+            rows.append(
+                [
+                    latex_escape(TARGET_NAMES[target]),
+                    model,
+                    latex_escape(label),
+                    number(en.get("micro_f1") if en else None),
+                    number(en.get("sample_jaccard") if en else None),
+                    number(local.get("micro_f1") if local else None),
+                    number(local.get("sample_jaccard") if local else None),
+                ]
+            )
+            csv_rows.append(
+                {
+                    "cohort": target,
+                    "model": model,
+                    "method": label,
+                    "en_micro_f1": en.get("micro_f1") if en else None,
+                    "en_jaccard": en.get("sample_jaccard") if en else None,
+                    "target_micro_f1": local.get("micro_f1") if local else None,
+                    "target_jaccard": local.get("sample_jaccard") if local else None,
+                    "en_macro_f1": en.get("macro_f1") if en else None,
+                    "target_macro_f1": local.get("macro_f1") if local else None,
+                }
+            )
+    pd.DataFrame(csv_rows).to_csv(folder / "combined_test_main_results.csv", index=False)
+    write_latex_table(
+        folder / "combined_test_main_table.tex",
+        "lllrrrr",
+        ["Cohort", "Model", "Method", "EN F1", "EN J", "Target F1", "Target J"],
+        rows,
+    )
+
+
+def combined_dataset_table(project_root: Path, folder: Path) -> None:
+    data = []
+    for target in TARGETS:
+        frame = dataset_summary(project_root, target)
+        if frame.empty:
+            continue
+        data.extend(frame.to_dict("records"))
+    frame = pd.DataFrame(data)
+    frame.to_csv(folder / "combined_dataset_summary.csv", index=False)
+    rows = []
+    for target in TARGETS:
+        for split in ("train", "dev", "test"):
+            r = next(
+                (
+                    record
+                    for record in data
+                    if record["target_language"] == target and record["split"] == split
+                ),
+                None,
+            )
+            rows.append(
+                [
+                    latex_escape(TARGET_NAMES[target]),
+                    split.upper(),
+                    str(r["n"]) if r else "--",
+                    number(r["mean_labels_per_example"], 2) if r else "--",
+                ]
+            )
+    write_latex_table(
+        folder / "combined_dataset_table.tex",
+        "llrr",
+        ["Cohort", "Split", "Aligned pairs", "Labels / item"],
+        rows,
+    )
+
+
+def combined_transfer_table(runs: list[dict[str, Any]], folder: Path) -> None:
+    rows, csv_rows = [], []
+    for target in TARGETS:
+        for model, method, training in [
+            ("Qwen", "zero_shot", "none"),
+            ("Qwen", "five_shot", "none"),
+            ("Qwen", "peft", "english"),
+            ("Qwen", "peft", "bilingual"),
+        ]:
+            en = find_run(runs, target, "en", model, method, training)
+            local = find_run(runs, target, target, model, method, training)
+            label = display_method(
+                local
+                or en
+                or {
+                    "family": "peft" if method == "peft" else "prompting",
+                    "method": method,
+                    "training": training,
+                }
+            )
+            gap = float(en["micro_f1"]) - float(local["micro_f1"]) if en and local else None
+            rows.append(
+                [
+                    latex_escape(TARGET_NAMES[target]),
+                    latex_escape(label),
+                    number(en.get("micro_f1") if en else None),
+                    number(local.get("micro_f1") if local else None),
+                    number(gap),
+                ]
+            )
+            csv_rows.append(
+                {
+                    "cohort": target,
+                    "method": label,
+                    "en_micro_f1": en.get("micro_f1") if en else None,
+                    "target_micro_f1": local.get("micro_f1") if local else None,
+                    "en_minus_target": gap,
+                }
+            )
+    pd.DataFrame(csv_rows).to_csv(folder / "combined_test_language_transfer.csv", index=False)
+    write_latex_table(
+        folder / "combined_test_language_transfer_table.tex",
+        "llrrr",
+        ["Cohort", "Qwen condition", "EN F1", "Target F1", "Gap"],
+        rows,
+    )
+
+
+def combined_prompt_sensitivity(all_dev: list[dict[str, Any]], folder: Path) -> None:
+    data = []
+    for target in TARGETS:
+        data.extend(
+            prompt_sensitivity(
+                [r for r in all_dev if r["target_language"] == target], target
+            ).to_dict("records")
+        )
+    pd.DataFrame(data).to_csv(folder / "combined_dev_prompt_sensitivity.csv", index=False)
+    if not data:
+        return
+    fig, axes = plt.subplots(2, 2, figsize=(11, 6), constrained_layout=True)
+    for i, target in enumerate(TARGETS):
+        for j, model in enumerate(("Qwen", "EuroLLM")):
+            ax = axes[i, j]
+            arr = [[float("nan") for _ in PROMPT_VARIANTS] for _ in SHOT_METHODS]
+            for r in data:
+                if r["target_language"] != target or display_model(r["model"]) != model:
+                    continue
+                if r["method"] in SHOT_METHODS and r["variant"] in PROMPT_VARIANTS:
+                    arr[SHOT_METHODS.index(r["method"])][PROMPT_VARIANTS.index(r["variant"])] = r[
+                        "mean_micro_f1"
+                    ]
+            import numpy as np
+
+            values = np.asarray(arr, dtype=float)
+            ax.imshow(values, vmin=0, vmax=1, cmap="Blues", aspect="auto")
+            ax.set_title(f"{TARGET_NAMES[target]} cohort · {model}")
+            ax.set_yticks([0, 1], ["Zero-shot", "Five-shot"])
+            ax.set_xticks(
+                range(4), ["Default", "Paraphrase", "No example", "Terse"], rotation=22, ha="right"
+            )
+            for k in range(2):
+                for l in range(4):
+                    if np.isfinite(values[k, l]):
+                        ax.text(
+                            l,
+                            k,
+                            f"{values[k, l]:.3f}",
+                            ha="center",
+                            va="center",
+                            color="white" if values[k, l] > 0.55 else "black",
+                            fontsize=9,
+                        )
+    fig.savefig(folder / "combined_dev_prompt_sensitivity.png", dpi=190)
+    plt.close(fig)
+
+
+def combined_method_plot(runs: list[dict[str, Any]], folder: Path) -> None:
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.4), sharey=True, constrained_layout=True)
+    configs = [
+        ("Qwen", "zero_shot", "none"),
+        ("Qwen", "five_shot", "none"),
+        ("Qwen", "peft", "english"),
+        ("Qwen", "peft", "target"),
+        ("Qwen", "peft", "bilingual"),
+        ("EuroLLM", "zero_shot", "none"),
+        ("EuroLLM", "five_shot", "none"),
+    ]
+    labels = [
+        "Qwen\nzero",
+        "Qwen\nfive",
+        "PEFT\nEN",
+        "PEFT\ntarget",
+        "PEFT\nbilingual",
+        "EuroLLM\nzero",
+        "EuroLLM\nfive",
+    ]
+    for ax, target in zip(axes, TARGETS, strict=True):
+        for idx, (model, method, training) in enumerate(configs):
+            run = find_run(runs, target, target, model, method, training)
+            if run:
+                ax.bar(idx, run["micro_f1"], color="steelblue" if model == "Qwen" else "darkgray")
+            else:
+                ax.text(idx, 0.04, "missing", rotation=90, ha="center", va="bottom", fontsize=7)
+        ax.set_xticks(range(len(labels)), labels, fontsize=8)
+        ax.set_title(TARGET_NAMES[target] + " TEST")
+        ax.set_ylim(0, 1)
+        ax.set_ylabel("Micro F1")
+    fig.savefig(folder / "combined_test_method_comparison.png", dpi=190)
+    plt.close(fig)
+
+
+def combined_emotion_plot(runs: list[dict[str, Any]], folder: Path) -> None:
+    import numpy as np
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.8), constrained_layout=True)
+    methods = [
+        ("zero_shot", "none", "Zero-shot"),
+        ("five_shot", "none", "Five-shot"),
+        ("peft", "bilingual", "PEFT bilingual"),
+    ]
+    for ax, target in zip(axes, TARGETS, strict=True):
+        matrix = np.full((len(EMOTIONS), len(methods)), np.nan)
+        for j, (method, training, _) in enumerate(methods):
+            run = find_run(runs, target, target, "Qwen", method, training)
+            if not run:
+                continue
+            for i, emotion in enumerate(EMOTIONS):
+                val = run.get("per_label", {}).get(emotion, {}).get("f1")
+                if val is not None:
+                    matrix[i, j] = float(val)
+        ax.imshow(matrix, vmin=0, vmax=1, cmap="Blues", aspect="auto")
+        ax.set_xticks(range(3), [m[2] for m in methods], rotation=18, ha="right", fontsize=9)
+        ax.set_yticks(range(len(EMOTIONS)), EMOTIONS, fontsize=9)
+        ax.set_title(TARGET_NAMES[target] + " TEST · Qwen")
+        for i in range(len(EMOTIONS)):
+            for j in range(3):
+                if np.isfinite(matrix[i, j]):
+                    ax.text(
+                        j,
+                        i,
+                        f"{matrix[i, j]:.2f}",
+                        ha="center",
+                        va="center",
+                        fontsize=8,
+                        color="white" if matrix[i, j] > 0.55 else "black",
+                    )
+    fig.savefig(folder / "combined_test_per_emotion_f1.png", dpi=190)
+    plt.close(fig)
+
+
+def combined_qualitative_table(
+    project_root: Path, runs: list[dict[str, Any]], folder: Path
+) -> None:
+    candidates = []
+    for target in TARGETS:
+        subset = [r for r in runs if r["target_language"] == target]
+        frame = qualitative_examples(project_root, subset, max_examples=12)
+        if frame.empty:
+            continue
+        frame.insert(0, "cohort", target)
+        candidates.extend(frame.to_dict("records"))
+    pd.DataFrame(candidates).to_csv(
+        folder / "combined_test_qualitative_candidates.csv", index=False
+    )
+    rows = []
+    for target in TARGETS:
+        pool = [
+            r
+            for r in candidates
+            if r["cohort"] == target
+            and r["input_language"] == target
+            and r["training"] == "bilingual"
+            and r["prompt_method"] == "five_shot"
+        ]
+        for change in ("improved", "worsened"):
+            options = sorted(
+                (r for r in pool if r["change"] == change),
+                key=lambda r: (-abs(r["delta_f1"]), str(r["alignment_id"])),
+            )
+            if not options:
+                continue
+            r = options[0]
+            import textwrap
+
+            text = textwrap.shorten(" ".join(str(r["text"]).split()), width=83, placeholder="...")
+            rows.append(
+                [
+                    TARGET_NAMES[target],
+                    latex_escape(change.capitalize()),
+                    latex_escape(text),
+                    latex_escape(r["gold"]),
+                    latex_escape(r["prompt_prediction"]),
+                    latex_escape(r["peft_prediction"]),
+                ]
+            )
+    if not rows:
+        (folder / "combined_test_qualitative_table.tex").unlink(missing_ok=True)
+        return
+    write_latex_table(
+        folder / "combined_test_qualitative_table.tex",
+        "llp{4cm}p{2.2cm}p{2.2cm}p{2.2cm}",
+        ["Cohort", "Change", "Text", "Gold", "Five-shot", "PEFT"],
+        rows,
+    )
+
+
+def combined_output_behavior_table(runs: list[dict[str, Any]], folder: Path) -> None:
+    # compare the parser and the number of predicted labels on target-language test items
+    comparisons = [
+        ("Qwen", "zero_shot", "none"),
+        ("Qwen", "five_shot", "none"),
+        ("Qwen", "peft", "bilingual"),
+        ("EuroLLM", "zero_shot", "none"),
+        ("EuroLLM", "five_shot", "none"),
+    ]
+    rows = []
+    csv_rows = []
+    for target in TARGETS:
+        for model, method, training in comparisons:
+            run = find_run(runs, target, target, model, method, training)
+            label = display_method(
+                run
+                or {
+                    "family": "peft" if method == "peft" else "prompting",
+                    "method": method,
+                    "training": training,
+                }
+            )
+            malformed = run.get("malformed_rate") if run else None
+            empty = run.get("empty_prediction_rate") if run else None
+            cardinality = run.get("pred_label_cardinality") if run else None
+            rows.append(
+                [
+                    TARGET_NAMES[target],
+                    model,
+                    latex_escape(label),
+                    number(float(malformed) * 100 if malformed is not None else None, 1),
+                    number(float(empty) * 100 if empty is not None else None, 1),
+                    number(cardinality, 2),
+                ]
+            )
+            csv_rows.append(
+                {
+                    "cohort": target,
+                    "model": model,
+                    "method": label,
+                    "malformed_rate": malformed,
+                    "empty_prediction_rate": empty,
+                    "pred_label_cardinality": cardinality,
+                }
+            )
+    pd.DataFrame(csv_rows).to_csv(folder / "combined_test_output_behavior.csv", index=False)
+    write_latex_table(
+        folder / "combined_test_output_behavior_table.tex",
+        "lllrrr",
+        ["Cohort", "Model", "Method", r"Malformed \%", r"Empty \%", "Labels / item"],
+        rows,
+    )
+
+
+def combined_runtime_table(project_root: Path, runs: list[dict[str, Any]], folder: Path) -> None:
+    all_rows = []
+    for target in TARGETS:
+        local = [
+            r for r in runs if r["target_language"] == target and r["input_language"] == target
+        ]
+        frame = runtime_table(project_root, local, target)
+        if not frame.empty:
+            frame.insert(0, "cohort", target)
+            all_rows.extend(frame.to_dict("records"))
+    pd.DataFrame(all_rows).to_csv(folder / "combined_test_runtime.csv", index=False)
+    rows = []
+    for target in TARGETS:
+        for r in [x for x in all_rows if x["cohort"] == target]:
+            label = (
+                display_model(r["model"])
+                + " "
+                + (r["training"] if r["family"] == "peft" else "prompting")
+            )
+            rows.append(
+                [
+                    TARGET_NAMES[target],
+                    latex_escape(label),
+                    number(r.get("seconds_per_sample"), 3),
+                    number(r.get("peak_gpu_memory_gb"), 1),
+                ]
+            )
+    if rows:
+        write_latex_table(
+            folder / "combined_test_runtime_table.tex",
+            "llrr",
+            ["Cohort", "Run", "Seconds / item", "GPU GB"],
+            rows,
+        )
+
+
+def generate_combined_report(
+    project_root: Path,
+    split: str,
+    allow_incomplete: bool = False,
+) -> None:
+    """Export matching German/Swedish tables and figures without any new inference"""
+    report_dir = project_root / "outputs/report"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    all_runs = []
+    for target in TARGETS:
+        runs = load_runs(project_root, target, split)
+        choices: dict[str, str] = {}
+        if split == "test":
+            selections_path = report_dir / f"selected_prompt_variants_{target}.json"
+            if selections_path.exists():
+                choices = json.loads(selections_path.read_text(encoding="utf-8"))
+            if not choices:
+                if allow_incomplete and not runs:
+                    print(f"No {target.upper()} TEST runs yet; leaving its report cells blank")
+                    continue
+                raise ValueError(f"No DEV-selected prompt variants for {target}")
+            runs = choose_runs(runs, choices)
+            if not allow_incomplete:
+                validate_test_runs(runs, target)
+        all_runs.extend(runs)
+    if not all_runs:
+        raise FileNotFoundError(f"No saved {split.upper()} metrics found for de or sv")
+
+    combined_dataset_table(project_root, report_dir)
+    if split == "dev":
+        combined_prompt_sensitivity(all_runs, report_dir)
+        print(f"Saved German/Swedish DEV sensitivity to {report_dir}")
+        return
+
+    combined_main_table(all_runs, report_dir)
+    combined_transfer_table(all_runs, report_dir)
+    combined_method_plot(all_runs, report_dir)
+    combined_emotion_plot(all_runs, report_dir)
+    combined_qualitative_table(project_root, all_runs, report_dir)
+    combined_output_behavior_table(all_runs, report_dir)
+    combined_runtime_table(project_root, all_runs, report_dir)
+    print(f"Saved combined German/Swedish TEST figures and tables to {report_dir}")

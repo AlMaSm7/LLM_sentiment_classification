@@ -333,9 +333,12 @@ def load_model(model_name: str, dtype: str) -> tuple[Any, Any]:
 
 
 def load_evaluation_data(
-    project_root: Path, config: dict, split: str, limit: int | None
+    project_root: Path,
+    config: dict,
+    target_lang: str,
+    split: str,
+    limit: int | None,
 ) -> dict[str, list[dict[str, Any]]]:
-    target_lang = config["language"]
     datasets = {}
     for input_lang in ("en", target_lang):
         rows = read_rows(data_path(project_root, config, split, target_lang, input_lang))
@@ -343,11 +346,11 @@ def load_evaluation_data(
     return datasets
 
 
-def load_selected_variants(project_root: Path, split: str) -> dict[str, str]:
+def load_selected_variants(project_root: Path, split: str, target_lang: str) -> dict[str, str]:
     if split != "test":
         return {}
 
-    path = project_root / "outputs/report/selected_prompt_variants.json"
+    path = project_root / "outputs/report" / f"selected_prompt_variants_{target_lang}.json"
     if not path.exists():
         raise FileNotFoundError(f"Missing {path}; select prompts on DEV before running TEST")
     return json.loads(path.read_text(encoding="utf-8"))
@@ -536,9 +539,13 @@ def run_experiment(
 # full workflow
 
 
-def show_demonstration_ids(config: dict, train_en: list[dict], train_target: list[dict]) -> None:
+def show_demonstration_ids(
+    config: dict,
+    train_en: list[dict[str, Any]],
+    train_target: list[dict[str, Any]],
+    target_lang: str,
+) -> None:
     id_key = config["prompting"]["id_key"]
-    target_lang = config["language"]
     ids = select_covering_ids(
         train_en,
         train_target,
@@ -552,22 +559,42 @@ def show_demonstration_ids(config: dict, train_en: list[dict], train_target: lis
         print(f"{identifier}  {gold_labels(english[identifier]['output'])}")
         print(f"   EN: {english[identifier]['input']}")
         print(f"   {target_lang.upper()}: {target[identifier]['input']}")
-    print("\nCopy into configs/prompting.yaml -> prompting.five_shot_ids:")
+    print(f"\nCopy into configs/prompting.yaml -> prompting.five_shot_ids.{target_lang}:")
     print(json.dumps(ids, ensure_ascii=False))
+
+
+def get_five_shot_ids(config: dict[str, Any], target_lang: str) -> list[Any]:
+    """Get five fixed demonstration IDs for the selected language"""
+    saved = config["prompting"].get("five_shot_ids") or {}
+
+    if isinstance(saved, dict):
+        ids = saved.get(target_lang) or []
+    elif isinstance(saved, list) and config.get("language") == target_lang:
+        # support older configs with a single list for their default language
+        ids = saved
+    else:
+        ids = []
+
+    if not isinstance(ids, list) or len(ids) != 5 or len(set(ids)) != 5:
+        raise ValueError(
+            f"Configure five distinct prompting.five_shot_ids.{target_lang} "
+            f"in configs/prompting.yaml (run --language {target_lang} --select-ids)"
+        )
+    return ids
 
 
 def run_prompting_experiments(
     project_root: Path,
     config_path: str = "configs/prompting.yaml",
-    split: str = "dev",
     language: str | None = None,
+    split: str = "dev",
     sensitivity: bool = False,
     select_ids: bool = False,
     model_roles: Sequence[str] | None = None,
     limit: int | None = None,
     skip_existing: bool = False,
 ) -> None:
-    """Execute the prompting workflow configured in YAML"""
+    """Run experiments for the language selected on the command line"""
     if split == "test" and (sensitivity or limit is not None):
         raise ValueError("TEST does not allow sensitivity tuning or a limited evaluation")
     if limit is not None and limit <= 0:
@@ -578,30 +605,39 @@ def run_prompting_experiments(
         config_file = project_root / config_file
     config = yaml.safe_load(config_file.read_text(encoding="utf-8"))
 
-    target_lang = language or config["language"]
+    target_lang = language or config.get("language")
+    if target_lang not in ("de", "sv"):
+        raise ValueError("Choose --language de or --language sv")
+
+    available_roles = {model["role"] for model in config["models"]}
+    unknown_roles = set(model_roles or ()) - available_roles
+    if unknown_roles:
+        raise ValueError(
+            f"Unknown model roles: {sorted(unknown_roles)}; available: {sorted(available_roles)}"
+        )
+
     prompt_config = config["prompting"]
     id_key = prompt_config["id_key"]
     train_en = read_rows(data_path(project_root, config, "train_en", target_lang))
     train_target = read_rows(data_path(project_root, config, "train_target", target_lang))
 
     if select_ids:
-        show_demonstration_ids(config, train_en, train_target)
+        show_demonstration_ids(config, train_en, train_target, target_lang)
         return
 
-    ids = prompt_config.get("five_shot_ids") or []
-    if len(ids) != 5 or len(set(ids)) != 5:
-        raise ValueError("Configure five distinct five_shot_ids first (use --select-ids)")
+    ids = get_five_shot_ids(config, target_lang)
     demos = {
         "en": build_examples(ids, train_en, id_key),
         target_lang: build_examples(ids, train_target, id_key),
     }
-    datasets = load_evaluation_data(project_root, config, split, limit)
-    selected = load_selected_variants(project_root, split)
+    datasets = load_evaluation_data(project_root, config, target_lang, split, limit)
+    selected = load_selected_variants(project_root, split, target_lang)
     variants = list(INSTRUCTION_VARIANTS) if sensitivity else [DEFAULT_VARIANT]
 
     folder = f"{split}_smoke" if limit is not None else split
     prediction_dir = project_root / "outputs/predictions/prompting" / folder
     metrics_dir = project_root / "outputs/metrics/prompting" / folder
+    metrics_dir.mkdir(parents=True, exist_ok=True)
     default_generation = {**DEFAULT_GENERATION, **config.get("generation", {})}
     summaries = []
 
@@ -615,7 +651,7 @@ def run_prompting_experiments(
 
         try:
             write_prompt_card(
-                metrics_dir / f"prompt_card_{tag}.md",
+                metrics_dir / f"prompt_card_{tag}_{target_lang}.md",
                 config,
                 generation,
                 ids,
@@ -666,7 +702,7 @@ def run_prompting_experiments(
         roles = "_".join(model_roles) if model_roles else "all"
         filename = "summary_sensitivity.csv" if sensitivity else "summary.csv"
         frame = pd.DataFrame(summaries)
-        frame.to_csv(metrics_dir / f"{roles}_{filename}", index=False)
+        frame.to_csv(metrics_dir / f"{target_lang}_{roles}_{filename}", index=False)
         table = frame.pivot_table(
             index=["model", "lang"],
             columns=["condition", "variant"],
