@@ -112,7 +112,7 @@ PYCODE
 
 `local_files_only=True` checks the local cache without downloading anything. After both models are present, your Slurm jobs can use `HF_HUB_OFFLINE=1` if their scripts enable offline mode.
 
-**Important:** You only need to set these environment variables manually for commands you run directly in a terminal (such as downloading models or running a Python script yourself). Your Slurm job files already set the cache paths. **Do not add separate `HF_HUB_CACHE` or `HF_XET_CACHE` exports.**
+**Important:** You only need to set these environment variables manually for commands you run directly in a terminal (such as downloading models or running a Python script yourself). Your Slurm job files already set the cache paths.
 
 
 ## 3. Check the job files
@@ -208,7 +208,7 @@ uv run --locked --no-dev --no-sync python scripts/run_prompting.py --language de
 uv run --locked --no-dev --no-sync python scripts/run_prompting.py --language sv --select-ids
 ```
 
-- `--language de` / `--language sv` chooses the target pair; it **overrides any default `language:` in YAML**
+- `--language de` / `--language sv` chooses the target pair  
 - `--select-ids` prints suitable aligned five-shot examples and exits without model inference
 
 Copy the printed IDs into `five_shot_ids.de` and `five_shot_ids.sv`. Once both lists are filled, **you no longer need to edit `prompting.yaml` when switching languages**.
@@ -239,14 +239,6 @@ find outputs/metrics/prompting/dev -maxdepth 1 -name '*__de__*.json' | wc -l  # 
 find outputs/metrics/prompting/dev -maxdepth 1 -name '*__sv__*.json' | wc -l  # 32
 ```
 
-Optional smoke test (manual script, inside a GPU allocation):
-
-```bash
-uv run --locked --no-dev --no-sync python scripts/run_prompting.py --language sv --split dev --models primary --limit 20
-```
-
-- `--split dev` selects DEV when calling the Python script directly
-- `--limit 20` processes only 20 examples and writes to a separate `dev_smoke/` folder; do not count these as full evaluations
 
 ## 8. Select the best DEV prompts
 

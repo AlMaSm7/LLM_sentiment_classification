@@ -605,7 +605,7 @@ def run_prompting_experiments(
         config_file = project_root / config_file
     config = yaml.safe_load(config_file.read_text(encoding="utf-8"))
 
-    target_lang = language or config.get("language")
+    target_lang = language
     if target_lang not in ("de", "sv"):
         raise ValueError("Choose --language de or --language sv")
 
