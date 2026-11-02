@@ -1,67 +1,0 @@
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Loading weights:   0%|          | 0/434 [00:00<?, ?it/s]Loading weights:   0%|          | 1/434 [00:01<08:11,  1.14s/it]Loading weights:   3%|▎         | 11/434 [00:01<00:35, 11.83it/s]Loading weights:   4%|▍         | 17/434 [00:01<00:24, 17.06it/s]Loading weights:   5%|▌         | 22/434 [00:01<00:19, 21.55it/s]Loading weights:   6%|▌         | 27/434 [00:01<00:19, 21.12it/s]Loading weights:   8%|▊         | 33/434 [00:01<00:14, 27.47it/s]Loading weights:   9%|▉         | 38/434 [00:02<00:13, 29.55it/s]Loading weights:  10%|▉         | 43/434 [00:02<00:16, 24.28it/s]Loading weights:  12%|█▏        | 53/434 [00:02<00:10, 35.17it/s]Loading weights:  15%|█▍        | 64/434 [00:02<00:07, 46.34it/s]Loading weights:  17%|█▋        | 75/434 [00:02<00:06, 57.64it/s]Loading weights:  19%|█▉        | 83/434 [00:02<00:05, 62.27it/s]Loading weights:  21%|██        | 91/434 [00:02<00:05, 59.82it/s]Loading weights:  23%|██▎       | 100/434 [00:03<00:05, 64.67it/s]Loading weights:  26%|██▌       | 111/434 [00:03<00:05, 57.04it/s]Loading weights:  28%|██▊       | 123/434 [00:03<00:04, 68.05it/s]Loading weights:  31%|███       | 134/434 [00:03<00:04, 66.70it/s]Loading weights:  34%|███▍      | 147/434 [00:03<00:03, 78.08it/s]Loading weights:  36%|███▌      | 156/434 [00:03<00:03, 76.42it/s]Loading weights:  38%|███▊      | 165/434 [00:03<00:03, 69.65it/s]Loading weights:  40%|███▉      | 173/434 [00:04<00:03, 65.83it/s]Loading weights:  42%|████▏     | 184/434 [00:04<00:03, 71.87it/s]Loading weights:  45%|████▍     | 195/434 [00:04<00:03, 72.01it/s]Loading weights:  48%|████▊     | 207/434 [00:04<00:02, 77.90it/s]Loading weights:  50%|████▉     | 215/434 [00:04<00:03, 71.05it/s]Loading weights:  51%|█████▏    | 223/434 [00:04<00:03, 66.56it/s]Loading weights:  54%|█████▎    | 233/434 [00:04<00:02, 68.87it/s]Loading weights:  56%|█████▌    | 243/434 [00:05<00:02, 71.66it/s]Loading weights:  59%|█████▊    | 254/434 [00:05<00:02, 65.36it/s]Loading weights:  61%|██████    | 265/434 [00:05<00:02, 75.03it/s]Loading weights:  63%|██████▎   | 274/434 [00:05<00:02, 65.36it/s]Loading weights:  65%|██████▍   | 282/434 [00:05<00:02, 60.91it/s]Loading weights:  67%|██████▋   | 292/434 [00:05<00:02, 67.15it/s]Loading weights:  70%|██████▉   | 303/434 [00:06<00:02, 58.30it/s]Loading weights:  72%|███████▏  | 314/434 [00:06<00:01, 67.04it/s]Loading weights:  75%|███████▌  | 327/434 [00:06<00:01, 78.25it/s]Loading weights:  77%|███████▋  | 336/434 [00:06<00:01, 74.91it/s]Loading weights:  79%|███████▉  | 345/434 [00:06<00:01, 70.47it/s]Loading weights:  81%|████████▏ | 353/434 [00:06<00:01, 63.26it/s]Loading weights:  84%|████████▍ | 364/434 [00:06<00:01, 66.10it/s]Loading weights:  87%|████████▋ | 376/434 [00:07<00:00, 73.81it/s]Loading weights:  89%|████████▉ | 387/434 [00:07<00:00, 76.89it/s]Loading weights:  91%|█████████ | 395/434 [00:07<00:00, 72.91it/s]Loading weights:  93%|█████████▎| 403/434 [00:07<00:00, 67.15it/s]Loading weights:  95%|█████████▍| 412/434 [00:07<00:00, 72.52it/s]Loading weights:  97%|█████████▋| 423/434 [00:07<00:00, 78.33it/s]Loading weights: 100%|█████████▉| 432/434 [00:07<00:00, 75.01it/s]Loading weights: 100%|██████████| 434/434 [00:07<00:00, 55.90it/s]
-Qwen2.5-3B-Instruct__en__zero_shot__default: macro_f1=0.302 micro_f1=0.331 malformed=0.002
-Qwen2.5-3B-Instruct__en__zero_shot__paraphrase: macro_f1=0.298 micro_f1=0.330 malformed=0.054
-Qwen2.5-3B-Instruct__en__zero_shot__no_format_example: macro_f1=0.009 micro_f1=0.008 malformed=0.773
-Qwen2.5-3B-Instruct__en__zero_shot__terse: macro_f1=0.368 micro_f1=0.395 malformed=0.000
-Qwen2.5-3B-Instruct__en__five_shot__default: macro_f1=0.356 micro_f1=0.365 malformed=0.000
-Qwen2.5-3B-Instruct__en__five_shot__paraphrase: macro_f1=0.349 micro_f1=0.364 malformed=0.000
-Qwen2.5-3B-Instruct__en__five_shot__no_format_example: macro_f1=0.328 micro_f1=0.334 malformed=0.000
-Qwen2.5-3B-Instruct__en__five_shot__terse: macro_f1=0.356 micro_f1=0.369 malformed=0.000
-Qwen2.5-3B-Instruct__sv__zero_shot__default: macro_f1=0.210 micro_f1=0.242 malformed=0.000
-Qwen2.5-3B-Instruct__sv__zero_shot__paraphrase: macro_f1=0.209 micro_f1=0.244 malformed=0.004
-Qwen2.5-3B-Instruct__sv__zero_shot__no_format_example: macro_f1=0.032 micro_f1=0.034 malformed=0.654
-Qwen2.5-3B-Instruct__sv__zero_shot__terse: macro_f1=0.244 micro_f1=0.287 malformed=0.000
-Qwen2.5-3B-Instruct__sv__five_shot__default: macro_f1=0.296 micro_f1=0.310 malformed=0.000
-Qwen2.5-3B-Instruct__sv__five_shot__paraphrase: macro_f1=0.284 micro_f1=0.294 malformed=0.000
-Qwen2.5-3B-Instruct__sv__five_shot__no_format_example: macro_f1=0.277 micro_f1=0.290 malformed=0.000
-Qwen2.5-3B-Instruct__sv__five_shot__terse: macro_f1=0.306 micro_f1=0.319 malformed=0.000
-
- condition                five_shot                    ...  zero_shot       
-variant                    default no_format_example  ... paraphrase  terse
-model               lang                              ...                  
-Qwen2.5-3B-Instruct en       0.356             0.328  ...      0.298  0.368
-                    sv       0.296             0.277  ...      0.209  0.244
-
-[2 rows x 8 columns]
-
-###############################################################################
-Hábrók Cluster
-Job 32362215 for user s6866573
-Finished at: Fri Oct  2 12:00:49 CEST 2026
-
-Job details:
-============
-
-Job ID                         : 32362215
-Name                           : prompting
-User                           : s6866573
-Partition                      : gpumedium
-Nodes                          : putter3
-Number of Nodes                : 1
-Cores                          : 4
-Number of Tasks                : 1
-State                          : COMPLETED  
-Submit                         : 2026-10-02T11:19:56
-Start                          : 2026-10-02T11:25:35
-End                            : 2026-10-02T12:00:44
-Reserved walltime              : 06:00:00
-Used walltime                  : 00:35:09
-Used CPU time                  : 00:04:45 (Efficiency:  3.38%)
-% User (Computation)           : 92.05%
-% System (I/O)                 :  7.95%
-Total memory reserved          : 32G
-Maximum memory used            : 7.40G
-Requested GPUs                 : 1
-Allocated GPUs                 : a100=1
-Max GPU utilization            : 69%
-Max GPU memory used            : 6.88G
-
-Acknowledgements:
-=================
-
-Please see this page for information about acknowledging Hábrók in your publications:
-
-https://wiki.hpc.rug.nl/habrok/introduction/scientific_output
-
-################################################################################

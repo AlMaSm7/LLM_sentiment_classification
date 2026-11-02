@@ -88,7 +88,7 @@ def load_xed_projection(
 
     df["labels"] = df["label_ids"].apply(parse_labels)
 
-    # remove neutral-only examples.
+    # remove neutral-only examples
     df = df[df["labels"].map(len) > 0].copy()
     df["target_key"] = df["target_sentence"].apply(normalize_text)
     df["label_key"] = df["labels"].apply(tuple)
@@ -149,11 +149,11 @@ def create_opus_pairs(
         target=target_language,
         release=release,
         preprocess="raw",
-        # only keep 1-to-1 sentence alignments.
+        # only keep 1-to-1 sentence alignments
         src_range="1",
         tgt_range="1",
         leave_non_alignments_out=True,
-        # two output files instead of one TSV file.
+        # two output files instead of one TSV file
         write=[
             str(source_file),
             str(target_file),
@@ -221,7 +221,7 @@ def load_opus_pairs(
     df["english_sentence"] = source_sentences
     df["target_sentence"] = target_sentences
 
-    # unique ID for the English side of the aligned subtitle.
+    # unique ID for the English side of the aligned subtitle
     df["alignment_id"] = df["source_document"] + "#" + df["source_sentence_id"]
 
     df["english_key"] = df["english_sentence"].apply(normalize_text)
@@ -254,8 +254,6 @@ def build_matched_pairs(
     # now, handle ambiguous cases because it can happen that if exactly the same target sentence
     # occurs at multiple OPUS alignment IDs, we can't know which occurrence corresponds to XED from text alone
     # so, drop those ambiguous cases
-
-    # TODO: maybe filter by semantic similarity using embeddings later
     counts = matched.groupby("target_key")["alignment_id"].nunique()
 
     ambiguous = set(counts[counts > 1].index)
@@ -268,7 +266,7 @@ def build_matched_pairs(
         keep="first",
     )
 
-    # also, we need to guarantee that an identical English subtitle can't occur in multiple partitions.
+    # also, we need to guarantee that an identical English subtitle can't occur in multiple partitions
     # so, keep one deterministic occurence
     before = len(matched)
     matched = matched.drop_duplicates(
@@ -297,7 +295,7 @@ def create_fixed_split(
     ):
         raise ValueError("Train/dev/test ratios must sum to 1.")
 
-    # stable order before random splitting.
+    # stable order before random splitting
     df = df.sort_values("alignment_id").reset_index(drop=True)
 
     X = np.zeros((len(df), 1))
@@ -352,10 +350,7 @@ def validate_split(
     if (english_counts > 1).any():
         raise ValueError("Duplicate English lines occur across partitions.")
 
-    # -----------------------------------------
-    # Same for target language.
-    # -----------------------------------------
-    # exact duplicate target-language lines cannot cross partitions
+    # same for target language --> exact duplicate target-language lines cannot cross partitions
     target_counts = df.groupby("target_key")["split"].nunique()
     if (target_counts > 1).any():
         raise ValueError("Duplicate target-language lines occur across partitions.")
@@ -452,7 +447,7 @@ def save_processed_data(
             subset, sentence_column=("english_sentence"), language="en"
         )
 
-        # assigned-language version.
+        # assigned-language version
         target_records = make_sft_records(
             subset, sentence_column=("target_sentence"), language=target_language
         )
@@ -518,14 +513,14 @@ def run_pipeline(
         ids_file=ids_file,
     )
 
-    # 3. Matched English-target XED pairs
+    # 3. matched English-target XED pairs
     pairs = build_matched_pairs(
         xed,
         opus,
     )
     print(f"Final matched pairs: {len(pairs)}")
 
-    # 4. Fixed stratified 70/20/10 split determined in data.yaml
+    # 4. fixed stratified 70/20/10 split determined in data.yaml
     pairs = create_fixed_split(
         df=pairs,
         seed=seed,
@@ -534,10 +529,10 @@ def run_pipeline(
         test_ratio=config["split"]["test"],
     )
 
-    # 5. Leakage / duplicate validation
+    # 5. leakage / duplicate validation
     validate_split(pairs)
 
-    # 6. Save datasets
+    # 6. save datasets
     save_processed_data(
         df=pairs,
         target_language=(target_language),

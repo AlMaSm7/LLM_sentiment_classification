@@ -1,7 +1,7 @@
 experiment:
   name: phase2_prompting
 
-language: sv            # assigned language
+language: sv # assigned language but can be selected via command flag as well
 dtype: bfloat16
 
 data:
@@ -9,23 +9,30 @@ data:
   train_en: train_en.jsonl
   train_target: train_{lang}.jsonl
   dev:
-    en: dev_en.jsonl          # adjust if your English dev file lives elsewhere
+    en: dev_en.jsonl # adjust if your English dev file lives elsewhere
     target: dev_{lang}.jsonl
   test:
     en: test_en.jsonl
     target: test_{lang}.jsonl
 
 models:
-  - name: Qwen/Qwen2.5-3B-Instruct   # same model as in configs/peft.yaml
+  - name: Qwen/Qwen2.5-3B-Instruct # same model as in configs/peft.yaml
     role: primary
   - name: utter-project/EuroLLM-9B-Instruct
-    role: second
+    role: secondary
     # generation:
     #   chat_template_kwargs: {enable_thinking: false}   # e.g. for Qwen3 models
 
 prompting:
-  id_key: alignment_id                # the alignment-ID field in your jsonl rows
-  five_shot_ids: ["en/1990/100530/5989398.xml.gz#575", "en/1965/59309/6919338.xml.gz#1621", "en/1954/46754/6980377.xml.gz#1659", "en/2015/4428728/6758675.xml.gz#636", "en/1965/59309/6919338.xml.gz#1231"]
+  id_key: alignment_id # the alignment-ID field in your jsonl rows
+  five_shot_ids:
+    [
+      "en/1990/100530/5989398.xml.gz#575",
+      "en/1965/59309/6919338.xml.gz#1621",
+      "en/1954/46754/6980377.xml.gz#1659",
+      "en/2015/4428728/6758675.xml.gz#636",
+      "en/1965/59309/6919338.xml.gz#1231",
+    ]
   selection:
     k: 5
     seed: 42
@@ -36,4 +43,4 @@ prompting:
 
 generation:
   max_new_tokens: 64
-  batch_size: 8             # set to 1 for strictly reproducible greedy outputs
+  batch_size: 8 # set to 1 for strictly reproducible greedy outputs

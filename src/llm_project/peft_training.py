@@ -56,7 +56,7 @@ def load_training_data(
     language: str,
     condition: str,
 ) -> tuple[Dataset, Dataset]:
-    """Load raw train and development datasets."""
+    """Load train and development datasets."""
 
     train_path, dev_path = get_training_paths(
         language,
@@ -82,7 +82,7 @@ def build_model(
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # right padding is fine during training.
+    # right padding is fine during training
     tokenizer.padding_side = "right"
 
     dtype = torch.bfloat16 if config["training"]["bf16"] else torch.float32
@@ -94,11 +94,13 @@ def build_model(
                 dtype=dtype,
             )
         case "qlora":
-            # TODO: Add configurations to yaml, is this todo anymore no
+            # load the frozen base model with nf4 4-bit quantization
+            quant = config["peft"]["quantization"]
             bnb_config = BitsAndBytesConfig(
-                load_in_8bit=True,
-                llm_int8_threshold=6.0,
-                llm_int8_has_fp16_weight=False,
+                load_in_4bit=True,
+                bnb_4bit_quant_type=quant.get("quant_type", "nf4"),
+                bnb_4bit_use_double_quant=quant.get("double_quant", True),
+                bnb_4bit_compute_dtype=dtype,
             )
             model = AutoModelForCausalLM.from_pretrained(
                 config["model"]["name"], dtype=dtype, quantization_config=bnb_config
@@ -158,7 +160,7 @@ def prepare_dataset(
             "content": example["output"],
         }
 
-        # user prompt without the correct answer
+        # user prompt without the correct answer:
         prompt_text = tokenizer.apply_chat_template(
             [user],
             tokenize=False,

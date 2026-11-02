@@ -1,8 +1,6 @@
 from pathlib import Path
 
-from llm_project.data_preparation.data_pipeline import (
-    run_pipeline,
-)
+from llm_project.data_preparation import run_pipeline
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 

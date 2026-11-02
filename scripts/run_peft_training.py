@@ -1,15 +1,12 @@
 import argparse
+import json
+import time
 from datetime import datetime
 from pathlib import Path
 
+import torch
 import wandb
 
-from llm_project.peft_evaluation import (
-    evaluate_model,
-)
-from llm_project.peft_inference import (
-    run_inference,
-)
 from llm_project.peft_training import (
     build_model,
     get_model_dir,
@@ -51,25 +48,6 @@ def parse_args() -> argparse.Namespace:
     )
 
     return parser.parse_args()
-
-
-def get_inference_examples(
-    language: str,
-) -> list[str]:
-    """Small examples for manually checking predictions."""
-
-    if language == "de":
-        return [
-            "Ich habe große Angst davor, was morgen passieren könnte.",
-            "Ich bin unglaublich glücklich, dich wiederzusehen!",
-            "Ich kann nicht glauben, dass du mir das angetan hast.",
-        ]
-
-    return [
-        "Jag är väldigt rädd för vad som kan hända imorgon.",
-        "Jag är så glad att se dig igen!",
-        "Jag kan inte tro att du gjorde så mot mig.",
-    ]
 
 
 def main() -> None:
@@ -139,6 +117,8 @@ def main() -> None:
         config,
     )
 
+    # measure the actual fine-tuning time
+    training_started = time.perf_counter()
     trainer = train_model(
         model=model,
         tokenizer=tokenizer,
@@ -148,6 +128,8 @@ def main() -> None:
         model_dir=model_dir,
         experiment=run_name,
     )
+
+    training_seconds = time.perf_counter() - training_started
 
     print("6. Saving model")
     save_model(
@@ -159,96 +141,104 @@ def main() -> None:
         condition=args.condition,
     )
 
-    print("7. Evaluating")
-    metrics = evaluate_model(
-        model=model,
-        tokenizer=tokenizer,
-        language=args.language,
-        condition=args.condition,
-        config=config,
-        split=args.split,
+    # save runtime and peak gpu allocation for the cost comparison
+    metadata_path = model_dir / "metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["training_seconds"] = round(training_seconds, 3)
+    metadata["peak_gpu_memory_gb"] = (
+        round(torch.cuda.max_memory_allocated() / 1e9, 3) if torch.cuda.is_available() else None
     )
+    metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
-    log_metrics_to_wandb(metrics)
+    # SHOULD BE DONE IN PEFT EVALUATION
+    # print("7. Evaluating")
+    # metrics = evaluate_model(
+    #     model=model,
+    #     tokenizer=tokenizer,
+    #     language=args.language,
+    #     condition=args.condition,
+    #     config=config,
+    #     split=args.split,
+    # )
 
-    print()
-    print("Metrics:")
-    print(metrics)
+    # # log_metrics_to_wandb(metrics)
 
-    print()
-    print("8. Running inference")
+    # print()
+    # print("Metrics:")
+    # print(metrics)
 
-    examples = get_inference_examples(args.language)
+    # print()
+    # print("8. Running inference")
 
-    predictions = run_inference(
-        model=model,
-        tokenizer=tokenizer,
-        texts=examples,
-        language=args.language,
-        condition=args.condition,
-        config=config,
-    )
+    # predictions = run_inference(
+    #     model=model,
+    #     tokenizer=tokenizer,
+    #     texts=examples,
+    #     language=args.language,
+    #     condition=args.condition,
+    #     config=config,
+    # )
 
-    for result in predictions:
-        print()
-        print(result["text"])
-        print("->", result["prediction"])
+    # for result in predictions:
+    #     print()
+    #     print(result["text"])
+    #     print("->", result["prediction"])
 
-    log_predictions_to_wandb(predictions)
+    # log_predictions_to_wandb(predictions)
 
-    print()
-    print("Experiment finished.")
+    # print()
+    # print("Experiment finished.")
     wandb.finish()
 
 
-def log_metrics_to_wandb(
-    metrics: dict,
-) -> None:
-    """Log evaluation metrics to W&B."""
+# def log_metrics_to_wandb(
+#     metrics: dict,
+# ) -> None:
+#     """Log evaluation metrics to W&B."""
 
-    for language, values in metrics.items():
-        wandb.log(
-            {
-                f"{language}/micro_f1": values["micro_f1"],
-                f"{language}/jaccard": values["jaccard"],
-                f"{language}/macro_f1": values["macro_f1"],
-                f"{language}/precision": values["precision"],
-                f"{language}/recall": values["recall"],
-                f"{language}/hamming_loss": values["hamming_loss"],
-            }
-        )
+#     for language, values in metrics.items():
+#         wandb.log(
+#             {
+#                 f"{language}/micro_f1": values["micro_f1"],
+#                 f"{language}/jaccard": values["jaccard"],
+#                 f"{language}/macro_f1": values["macro_f1"],
+#                 f"{language}/precision": values["precision"],
+#                 f"{language}/recall": values["recall"],
+#                 f"{language}/hamming_loss": values["hamming_loss"],
+#             }
+#         )
 
-        for emotion, score in values["per_emotion_f1"].items():
-            wandb.log(
-                {
-                    f"{language}/f1_{emotion}": score,
-                }
-            )
+#         for emotion, score in values["per_emotion_f1"].items():
+#             wandb.log(
+#                 {
+#                     f"{language}/f1_{emotion}": score,
+#                 }
+#             )
 
 
-def log_predictions_to_wandb(
-    predictions: list[dict],
-) -> None:
-    """Log inference examples to W&B."""
+# def log_predictions_to_wandb(
+#     predictions: list[dict],
+# ) -> None:
+#     """Log inference examples to W&B."""
 
-    table = wandb.Table(
-        columns=[
-            "text",
-            "prediction",
-        ]
-    )
+#     table = wandb.Table(
+#         columns=[
+#             "text",
+#             "prediction",
+#         ]
+#     )
 
-    for result in predictions:
-        table.add_data(
-            result["text"],
-            result["prediction"],
-        )
+#     for result in predictions:
+#         table.add_data(
+#             result["text"],
+#             result["prediction"],
+#         )
 
-    wandb.log(
-        {
-            "inference_examples": table,
-        }
-    )
+#     wandb.log(
+#         {
+#             "inference_examples": table,
+#         }
+#     )
 
 
 if __name__ == "__main__":

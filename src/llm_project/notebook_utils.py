@@ -1,7 +1,9 @@
 from __future__ import annotations
-from typing import Dict, Iterable, Sequence, Tuple
-from pathlib import Path
+
 import json
+from collections.abc import Iterable, Sequence
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 from IPython.display import display
@@ -14,7 +16,7 @@ def binarise(lists: Sequence[Sequence[str]], labels: Sequence[str]) -> np.ndarra
     return np.array([[lab in set(x) for lab in label_set] for x in lists], dtype=bool)
 
 
-def f1s(Y: np.ndarray, P: np.ndarray) -> Tuple[float, float]:
+def f1s(Y: np.ndarray, P: np.ndarray) -> tuple[float, float]:
     tp = (Y & P).sum(0)
     fp = (~Y & P).sum(0)
     fn = (Y & ~P).sum(0)
@@ -30,12 +32,12 @@ def paired_bootstrap(
     labels: Sequence[str],
     n_boot: int = 1000,
     seed: int = 0,
-) -> Tuple[float, float, float, int]:
+) -> tuple[float, float, float, int]:
     ids = da.index.intersection(db.index)
-    Ya = binarise(da.loc[ids, "gold"], labels)
-    Pa = binarise(da.loc[ids, "pred"], labels)
-    Yb = binarise(db.loc[ids, "gold"], labels)
-    Pb = binarise(db.loc[ids, "pred"], labels)
+    Ya = binarise(da.loc[ids, "gold"].tolist(), labels)
+    Pa = binarise(da.loc[ids, "pred"].tolist(), labels)
+    Yb = binarise(db.loc[ids, "gold"].tolist(), labels)
+    Pb = binarise(db.loc[ids, "pred"].tolist(), labels)
 
     rng = np.random.default_rng(seed)
     diffs = []
@@ -52,12 +54,16 @@ def load_summary(metrics_dir: str | Path) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
-def load_metrics(model: str, lang: str, condition: str, metrics_dir: str | Path, variant: str = "default") -> dict:
+def load_metrics(
+    model: str, lang: str, condition: str, metrics_dir: str | Path, variant: str = "default"
+) -> dict:
     path = Path(metrics_dir) / f"{model}__{lang}__{condition}__{variant}.json"
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def load_preds(model: str, lang: str, condition: str, pred_dir: str | Path, variant: str = "default") -> pd.DataFrame:
+def load_preds(
+    model: str, lang: str, condition: str, pred_dir: str | Path, variant: str = "default"
+) -> pd.DataFrame:
     path = Path(pred_dir) / f"{model}__{lang}__{condition}__{variant}.jsonl"
     return pd.DataFrame([json.loads(l) for l in path.open(encoding="utf-8")])
 
@@ -91,22 +97,34 @@ def per_label_f1(summary: pd.DataFrame, metrics_dir: str | Path, labels: list[st
     rows = {}
     for _, r in summary.iterrows():
         met = load_metrics(r["model"], r["lang"], r["condition"], metrics_dir)
-        rows[(r["model"], r["lang"], r["condition"])]= {l: met["per_label"][l]["f1"] for l in labels}
+        rows[(r["model"], r["lang"], r["condition"])] = {
+            l: met["per_label"][l]["f1"] for l in labels
+        }
     df = pd.DataFrame(rows)
     first = summary.iloc[0]
     df["gold_support"] = [
-        load_metrics(first["model"], first["lang"], first["condition"], metrics_dir)["per_label"][l]["support"]
+        load_metrics(first["model"], first["lang"], first["condition"], metrics_dir)["per_label"][
+            l
+        ]["support"]
         for l in labels
     ]
     return df
 
 
-def predicted_distribution(summary: pd.DataFrame, pred_dir: str | Path, labels: list[str]) -> pd.DataFrame:
+def predicted_distribution(
+    summary: pd.DataFrame, pred_dir: str | Path, labels: list[str]
+) -> pd.DataFrame:
     rows = {}
     for _, r in summary.iterrows():
         df = load_preds(r["model"], r["lang"], r["condition"], pred_dir)
-        rows[(r["model"], r["lang"], r["condition"])]= pd.Series([l for p in df["pred"] for l in p]).value_counts().reindex(labels, fill_value=0)
-    gold_counts = pd.Series([l for g in df["gold"] for l in g]).value_counts().reindex(labels, fill_value=0)
+        rows[(r["model"], r["lang"], r["condition"])] = (
+            pd.Series([l for p in df["pred"] for l in p])
+            .value_counts()
+            .reindex(labels, fill_value=0)
+        )
+    gold_counts = (
+        pd.Series([l for g in df["gold"] for l in g]).value_counts().reindex(labels, fill_value=0)
+    )
     dist = pd.DataFrame(rows)
     dist.insert(0, "GOLD", gold_counts)
     return dist
@@ -122,16 +140,40 @@ def empty_predictions_summary(summary: pd.DataFrame, pred_dir: str | Path) -> li
     return out
 
 
-def show_errors(model: str, lang: str, condition: str, pred_dir: str | Path, k: int = 10, seed: int = 0):
+def show_errors(
+    model: str, lang: str, condition: str, pred_dir: str | Path, k: int = 10, seed: int = 0
+):
     """Display a sample of wrong predictions for qualitative analysis."""
     df = load_preds(model, lang, condition, pred_dir)
     wrong = df[df["gold"].apply(set) != df["pred"].apply(set)]
     print(f"{len(wrong)}/{len(df)} not exactly right")
     with pd.option_context("display.max_colwidth", 120):
-        display(wrong.sample(min(k, len(wrong)), random_state=seed)[["text", "gold", "pred", "raw_output"]])
+        display(
+            wrong.sample(min(k, len(wrong)), random_state=seed)[
+                ["text", "gold", "pred", "raw_output"]
+            ]
+        )
 
 
-def ensemble_majority(pred_dfs: Dict[str, pd.DataFrame], labels: Iterable[str], tie_strategy: str = "union") -> pd.DataFrame:
+def get_labels(df: pd.DataFrame, index, column: str) -> list[str]:
+    # read a list of emotion labels from the dataframe
+    value: object = df.at[index, column]
+
+    if not isinstance(value, list):
+        raise TypeError(f"Expected a list in column '{column}'")
+
+    labels = []
+    for label in value:
+        if not isinstance(label, str):
+            raise TypeError("Emotion labels must be strings")
+        labels.append(label)
+
+    return labels
+
+
+def ensemble_majority(
+    pred_dfs: dict[str, pd.DataFrame], labels: Iterable[str], tie_strategy: str = "union"
+) -> pd.DataFrame:
     """Create an ensemble prediction by majority vote across provided prediction DataFrames.
 
     pred_dfs: mapping name -> DataFrame containing at least columns `gold` and `pred` and indexed by ID.
@@ -150,10 +192,12 @@ def ensemble_majority(pred_dfs: Dict[str, pd.DataFrame], labels: Iterable[str], 
     out_rows = []
     nsys = len(dfs)
     for i in ids:
-        gold = dfs[0].at[i, "gold"]
-        votes = {}
+        gold = get_labels(dfs[0], i, "gold")
+        votes: dict[str, int] = {}
+
         for df in dfs:
-            pred = df.at[i, "pred"]
+            pred = get_labels(df, i, "pred")
+
             for lab in pred:
                 votes[lab] = votes.get(lab, 0) + 1
         # labels reaching strict majority (> nsys/2)
@@ -162,7 +206,7 @@ def ensemble_majority(pred_dfs: Dict[str, pd.DataFrame], labels: Iterable[str], 
             if tie_strategy == "union":
                 selected = sorted(votes.keys())
             elif tie_strategy == "first":
-                selected = list(dfs[0].at[i, "pred"]) if len(dfs[0].at[i, "pred"]) else []
+                selected = get_labels(dfs[0], i, "pred")
             else:  # max: choose labels with max count
                 if votes:
                     maxc = max(votes.values())
@@ -175,7 +219,7 @@ def ensemble_majority(pred_dfs: Dict[str, pd.DataFrame], labels: Iterable[str], 
     return out
 
 
-def score_predictions(df: pd.DataFrame, labels: Iterable[str]) -> dict:
+def score_predictions(df: pd.DataFrame, labels: Sequence[str]) -> dict:
     """Compute simple summary metrics for a predictions DataFrame with `gold` and `pred` columns.
 
     Returns a dict with `macro_f1`, `micro_f1`, `exact_match`, `jaccard`,
@@ -237,22 +281,35 @@ def compare_predictions(
             candidate_name: candidate_df.loc[ids, "pred"],
         }
     )
+    # calculate the change in f1 for each example
     cmp["delta"] = [
         text_f1(g, q) - text_f1(g, p)
-        for g, p, q in zip(cmp["gold"], cmp[base_name], cmp[candidate_name])
+        for g, p, q in zip(
+            cmp["gold"],
+            cmp[base_name],
+            cmp[candidate_name],
+            strict=True,
+        )
     ]
 
+    # include english translations if available
     if english_df is not None:
         cmp["english_text"] = english_df.reindex(ids)["text"]
 
-    print(
-        f"=== {candidate_name} vs {base_name} | improved {(cmp.delta > 0).sum()}, "
-        f"worsened {(cmp.delta < 0).sum()}, same {(cmp.delta == 0).sum()} ==="
-    )
+    # summarize improvements and regressions
+    improved = (cmp["delta"] > 0).sum()
+    worsened = (cmp["delta"] < 0).sum()
+    same = (cmp["delta"] == 0).sum()
+
+    print(f"{candidate_name} vs {base_name}")
+    print(f"Improved: {improved}, worsened: {worsened}, unchanged: {same}")
+
+    # show examples with the largest differences
     with pd.option_context("display.max_colwidth", 80):
         print("Candidate IMPROVED:")
         display(cmp.sort_values("delta", ascending=False).head(k))
+
         print("Candidate WORSENED:")
-        display(cmp.sort_values("delta").head(k))
+        display(cmp.sort_values("delta", ascending=True).head(k))
 
     return cmp
