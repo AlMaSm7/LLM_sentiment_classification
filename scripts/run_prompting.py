@@ -14,16 +14,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--language",
         choices=["de", "sv"],
-        help="target language (overrides the default in prompting.yaml)",
+        help="target language for experiments (not needed with --select-ids)",
     )
     parser.add_argument("--split", choices=["dev", "test"], default="dev")
     parser.add_argument("--sensitivity", action="store_true")
-    parser.add_argument("--select-ids", action="store_true")
+    parser.add_argument(
+        "--select-ids",
+        action="store_true",
+        help="select one shared set of IDs for English, German and Swedish",
+    )
     parser.add_argument(
         "--models",
         nargs="+",
         choices=["primary", "secondary"],
         help="model roles to evaluate",
+    )
+    parser.add_argument(
+        "--conditions",
+        nargs="+",
+        choices=["zero_shot", "five_shot"],
+        help="run only selected prompting conditions (default: both)",
     )
     parser.add_argument("--limit", type=int, help="evaluate only the first N examples")
     parser.add_argument("--skip-existing", action="store_true")
@@ -48,6 +58,7 @@ def main() -> None:
         sensitivity=args.sensitivity,
         select_ids=args.select_ids,
         model_roles=args.models,
+        conditions=args.conditions,
         limit=args.limit,
         skip_existing=args.skip_existing,
     )

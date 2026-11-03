@@ -5,6 +5,7 @@ import hashlib
 import json
 import random
 import time
+import unicodedata
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
@@ -390,7 +391,7 @@ def write_prompt_card(
         "## Demonstration selection",
         f"- fixed aligned IDs: {list(ids)}",
         f"- selection: {config['prompting']['selection']}",
-        "- English and target-language prompts use the same aligned demonstration IDs",
+        "- English, German and Swedish prompts use the same aligned demonstration IDs",
         "",
     ]
 
@@ -539,48 +540,112 @@ def run_experiment(
 # full workflow
 
 
-def show_demonstration_ids(
-    config: dict,
-    train_en: list[dict[str, Any]],
-    train_target: list[dict[str, Any]],
-    target_lang: str,
-) -> None:
+def load_shared_training_data(project_root: Path, config: dict) -> dict[str, list[dict[str, Any]]]:
+    """Load the training records for both aligned language pairs"""
+    return {
+        "en_de": read_rows(data_path(project_root, config, "train_en", "de")),
+        "de": read_rows(data_path(project_root, config, "train_target", "de")),
+        "en_sv": read_rows(data_path(project_root, config, "train_en", "sv")),
+        "sv": read_rows(data_path(project_root, config, "train_target", "sv")),
+    }
+
+
+def find_shared_ids(datasets: dict[str, list[dict[str, Any]]], id_key: str) -> list[Any]:
+    """Find training IDs with the same English sentence and labels in both cohorts"""
+    by_language = {
+        language: {row[id_key]: row for row in rows} for language, rows in datasets.items()
+    }
+    common = set.intersection(*(set(rows) for rows in by_language.values()))
+    shared = []
+
+    for identifier in sorted(common, key=str):
+        en_de = by_language["en_de"][identifier]
+        en_sv = by_language["en_sv"][identifier]
+        labels = gold_labels(en_de["output"])
+
+        # an OPUS ID alone does not guarantee the same sentence in both corpora
+        english_de = unicodedata.normalize("NFKC", en_de["input"]).split()
+        english_sv = unicodedata.normalize("NFKC", en_sv["input"]).split()
+        if english_de != english_sv:
+            continue
+
+        if any(
+            gold_labels(by_language[language][identifier]["output"]) != labels
+            for language in ("de", "en_sv", "sv")
+        ):
+            continue
+
+        shared.append(identifier)
+
+    return shared
+
+
+def select_shared_ids(config: dict, datasets: dict[str, list[dict[str, Any]]]) -> list[Any]:
+    """Select five demonstrations from the common English/German/Swedish pool"""
     id_key = config["prompting"]["id_key"]
-    ids = select_covering_ids(
-        train_en,
-        train_target,
-        id_key,
-        **config["prompting"]["selection"],
-    )
-    english = {row[id_key]: row for row in train_en}
-    target = {row[id_key]: row for row in train_target}
+    shared = set(find_shared_ids(datasets, id_key))
+    if not shared:
+        raise ValueError(
+            "No common training examples were found across English, German and Swedish "
+            "with identical alignment IDs, English text and labels. "
+            "The DE and SV data pipelines may need a shared three-language alignment."
+        )
+
+    english = [row for row in datasets["en_de"] if row[id_key] in shared]
+    german = [row for row in datasets["de"] if row[id_key] in shared]
+    try:
+        return select_covering_ids(english, german, id_key, **config["prompting"]["selection"])
+    except ValueError as exc:
+        raise ValueError(
+            f"Found {len(shared)} shared training IDs, but could not select five "
+            "that cover all eight emotions. The separately prepared language pairs "
+            "may not have enough common examples."
+        ) from exc
+
+
+def show_demonstration_ids(config: dict, datasets: dict[str, list[dict[str, Any]]]) -> None:
+    """Print five IDs that can be used unchanged across all three languages"""
+    id_key = config["prompting"]["id_key"]
+    ids = select_shared_ids(config, datasets)
+    by_language = {
+        language: {row[id_key]: row for row in rows} for language, rows in datasets.items()
+    }
 
     for identifier in ids:
-        print(f"{identifier}  {gold_labels(english[identifier]['output'])}")
-        print(f"   EN: {english[identifier]['input']}")
-        print(f"   {target_lang.upper()}: {target[identifier]['input']}")
-    print(f"\nCopy into configs/prompting.yaml -> prompting.five_shot_ids.{target_lang}:")
+        print(f"{identifier}  {gold_labels(by_language['en_de'][identifier]['output'])}")
+        for language in ("en_de", "de", "sv"):
+            display_name = "EN" if language == "en_de" else language.upper()
+            print(f"   {display_name}: {by_language[language][identifier]['input']}")
+
+    print("\nCopy into configs/prompting.yaml -> prompting.five_shot_ids:")
     print(json.dumps(ids, ensure_ascii=False))
 
 
-def get_five_shot_ids(config: dict[str, Any], target_lang: str) -> list[Any]:
-    """Get five fixed demonstration IDs for the selected language"""
-    saved = config["prompting"].get("five_shot_ids") or {}
-
-    if isinstance(saved, dict):
-        ids = saved.get(target_lang) or []
-    elif isinstance(saved, list) and config.get("language") == target_lang:
-        # support older configs with a single list for their default language
-        ids = saved
-    else:
-        ids = []
-
+def get_five_shot_ids(config: dict[str, Any]) -> list[Any]:
+    """Read one shared list of five demonstration IDs"""
+    ids = config["prompting"].get("five_shot_ids")
     if not isinstance(ids, list) or len(ids) != 5 or len(set(ids)) != 5:
         raise ValueError(
-            f"Configure five distinct prompting.five_shot_ids.{target_lang} "
-            f"in configs/prompting.yaml (run --language {target_lang} --select-ids)"
+            "Set prompting.five_shot_ids to one list of five distinct IDs "
+            "(run scripts/run_prompting.py --select-ids first)"
         )
     return ids
+
+
+def validate_shared_ids(
+    ids: Sequence[Any],
+    datasets: dict[str, list[dict[str, Any]]],
+    id_key: str,
+) -> None:
+    """Reject IDs that are not the same labeled example in all three languages"""
+    valid = set(find_shared_ids(datasets, id_key))
+    invalid = [identifier for identifier in ids if identifier not in valid]
+    if invalid:
+        raise ValueError(
+            f"Shared five-shot IDs are not aligned TRAIN examples in all three "
+            f"languages with matching labels and English text: {invalid}. "
+            "Run --select-ids to choose valid shared IDs."
+        )
 
 
 def run_prompting_experiments(
@@ -591,6 +656,7 @@ def run_prompting_experiments(
     sensitivity: bool = False,
     select_ids: bool = False,
     model_roles: Sequence[str] | None = None,
+    conditions: Sequence[str] | None = None,
     limit: int | None = None,
     skip_existing: bool = False,
 ) -> None:
@@ -605,9 +671,19 @@ def run_prompting_experiments(
         config_file = project_root / config_file
     config = yaml.safe_load(config_file.read_text(encoding="utf-8"))
 
-    target_lang = language
+    # select IDs globally without needing a target-language flag
+    if select_ids:
+        shared_data = load_shared_training_data(project_root, config)
+        show_demonstration_ids(config, shared_data)
+        return
+
+    target_lang = language or config.get("language")
     if target_lang not in ("de", "sv"):
         raise ValueError("Choose --language de or --language sv")
+
+    conditions_to_run = conditions if conditions is not None else CONDITIONS
+    if set(conditions_to_run) - set(CONDITIONS):
+        raise ValueError(f"Unknown prompting conditions: {conditions_to_run}")
 
     available_roles = {model["role"] for model in config["models"]}
     unknown_roles = set(model_roles or ()) - available_roles
@@ -618,17 +694,12 @@ def run_prompting_experiments(
 
     prompt_config = config["prompting"]
     id_key = prompt_config["id_key"]
-    train_en = read_rows(data_path(project_root, config, "train_en", target_lang))
-    train_target = read_rows(data_path(project_root, config, "train_target", target_lang))
-
-    if select_ids:
-        show_demonstration_ids(config, train_en, train_target, target_lang)
-        return
-
-    ids = get_five_shot_ids(config, target_lang)
+    shared_data = load_shared_training_data(project_root, config)
+    ids = get_five_shot_ids(config)
+    validate_shared_ids(ids, shared_data, id_key)
     demos = {
-        "en": build_examples(ids, train_en, id_key),
-        target_lang: build_examples(ids, train_target, id_key),
+        "en": build_examples(ids, shared_data[f"en_{target_lang}"], id_key),
+        target_lang: build_examples(ids, shared_data[target_lang], id_key),
     }
     datasets = load_evaluation_data(project_root, config, target_lang, split, limit)
     selected = load_selected_variants(project_root, split, target_lang)
@@ -661,7 +732,7 @@ def run_prompting_experiments(
                 datasets,
             )
             for input_lang, rows in datasets.items():
-                for condition in CONDITIONS:
+                for condition in conditions_to_run:
                     key = f"{tag}__{target_lang}__{input_lang}__{condition}"
                     run_variants = [selected[key]] if split == "test" else variants
 
@@ -670,6 +741,14 @@ def run_prompting_experiments(
                         metric_file = metrics_dir / f"{name}.json"
                         prediction_file = prediction_dir / f"{name}.jsonl"
                         if skip_existing and metric_file.exists() and prediction_file.exists():
+                            if condition == "five_shot":
+                                old_metrics = json.loads(metric_file.read_text(encoding="utf-8"))
+                                if old_metrics.get("five_shot_ids") != list(ids):
+                                    raise ValueError(
+                                        f"Existing five-shot result {name} used different "
+                                        "demonstrations. Rerun this experiment without "
+                                        "--skip-existing before comparing results."
+                                    )
                             print(f"Skipping completed experiment: {name}")
                             continue
 

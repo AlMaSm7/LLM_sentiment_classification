@@ -112,7 +112,7 @@ PYCODE
 
 `local_files_only=True` checks the local cache without downloading anything. After both models are present, your Slurm jobs can use `HF_HUB_OFFLINE=1` if their scripts enable offline mode.
 
-**Important:** You only need to set these environment variables manually for commands you run directly in a terminal (such as downloading models or running a Python script yourself). Your Slurm job files already set the cache paths.
+**Important:** You only need to set these environment variables manually for commands you run directly in a terminal (such as downloading models or running a Python script yourself). Your Slurm job files already set the cache paths. **Do not add separate `HF_HUB_CACHE` or `HF_XET_CACHE` exports.**
 
 
 ## 3. Check the job files
@@ -170,9 +170,9 @@ sbatch --array=3-5%2 jobs/run_peft_evaluation.sh dev
 - `dev` selects the development split
 - Predictions go to `outputs/predictions/peft/dev/` and metrics to `outputs/metrics/peft/dev/`
 
-## 6. Configure prompting once
+## 6. Select one shared set of five-shot examples
 
-There is only **one** prompting configuration: `configs/prompting.yaml`. Check the model roles:
+There is one prompting configuration: `configs/prompting.yaml`. Check the model roles:
 
 ```yaml
 models:
@@ -182,14 +182,12 @@ models:
     role: secondary
 ```
 
-Store the five fixed examples **separately for each language**, under `prompting.five_shot_ids`:
+The prompting code uses **one list of five alignment IDs for English, German and Swedish**:
 
 ```yaml
 prompting:
   id_key: alignment_id
-  five_shot_ids:
-    de: []  # replace with five German alignment IDs
-    sv: []  # replace with five Swedish alignment IDs
+  five_shot_ids: []  # replace with five shared training IDs
   selection:
     k: 5
     seed: 42
@@ -199,19 +197,30 @@ prompting:
     min_single: 1
 ```
 
-The lists shown above are placeholders. Keep your existing selection settings and paste in **actual IDs from your TRAIN data**.
+The IDs must refer to matching training examples in **all four** files:
 
-To find the five IDs for each target, run these **one-time manual commands** (with the manual cache exports from Section 1):
-
-```bash
-uv run --locked --no-dev --no-sync python scripts/run_prompting.py --language de --select-ids
-uv run --locked --no-dev --no-sync python scripts/run_prompting.py --language sv --select-ids
+```text
+data/processed/de/train_en.jsonl
+data/processed/de/train_de.jsonl
+data/processed/sv/train_en.jsonl
+data/processed/sv/train_sv.jsonl
 ```
 
-- `--language de` / `--language sv` chooses the target pair  
-- `--select-ids` prints suitable aligned five-shot examples and exits without model inference
+The code checks that each ID exists in all four files, that the two English records have the same text, and that the emotion labels match across the languages. This prevents unrelated sentences from being treated as aligned examples.
 
-Copy the printed IDs into `five_shot_ids.de` and `five_shot_ids.sv`. Once both lists are filled, **you no longer need to edit `prompting.yaml` when switching languages**.
+**Select the IDs once** after preparing both language datasets. This is a manual Python command, so set the cache variables from Section 1 in your terminal first:
+
+```bash
+uv run --locked --no-dev --no-sync python scripts/run_prompting.py --select-ids
+```
+
+- `--select-ids` finds five suitable shared demonstrations, prints their IDs and texts, and exits without loading a model
+- `--locked`, `--no-dev` and `--no-sync` use the installed uv environment without changing dependencies
+- **Do not pass `--language` here**: selection checks English, German and Swedish together
+
+Copy the five printed IDs into the **single** `five_shot_ids` list in `configs/prompting.yaml`. Keep each ID's actual type (for example, do not turn an integer into a string). You can then use `--language de` and `--language sv` for experiments without changing the config.
+
+**If selection fails:** independently prepared DE and SV datasets may not share five correctly aligned examples covering all eight emotions. In that case, the underlying data alignment must be checked; do not invent IDs or combine unrelated examples.
 
 ## 7. Run prompting on DEV
 
@@ -225,12 +234,27 @@ sbatch jobs/run_prompting.sh dev --language sv --sensitivity --models secondary 
 ```
 
 - `dev` evaluates the development split
-- `--language de/sv` selects the language pair and its five-shot IDs
+- `--language de/sv` selects the evaluation language pair; both pairs use the same five demonstration IDs
 - `--sensitivity` evaluates all **four prompt versions** rather than only `default`
 - `--models primary/secondary` selects Qwen or EuroLLM
 - `--skip-existing` skips a run when **both** its predictions and metrics already exist
 
-For each target, there are **32 DEV experiments**: two models × two input languages × two shot settings × four prompt versions. The two targets can now run independently because their datasets, five-shot IDs and experiment filenames are language-specific.
+For each target, there are **32 DEV experiments**: two models × two input languages × two shot settings × four prompt versions. The two targets can run independently because their datasets and experiment filenames are language-specific. Both targets use the same five demonstration IDs.
+
+**If you already completed five-shot prompting using different IDs**, those results do not match the new experimental setup. Rerun the five-shot DEV experiments for both models and languages **without `--skip-existing`** (zero-shot results do not need to be repeated):
+
+```bash
+sbatch jobs/run_prompting.sh dev --language de --conditions five_shot --sensitivity --models primary
+sbatch jobs/run_prompting.sh dev --language de --conditions five_shot --sensitivity --models secondary
+sbatch jobs/run_prompting.sh dev --language sv --conditions five_shot --sensitivity --models primary
+sbatch jobs/run_prompting.sh dev --language sv --conditions five_shot --sensitivity --models secondary
+```
+
+- `--conditions five_shot` runs only the five-shot condition
+- `--sensitivity` still evaluates its four prompt variants
+- Omitting `--skip-existing` replaces old five-shot predictions and metrics
+
+After rerunning, repeat DEV prompt selection (Section 8). If TEST five-shot evaluations were previously completed with different IDs, rerun those too after selection, using `--conditions five_shot` **without** `--skip-existing`.
 
 Check counts when the jobs finish:
 
@@ -239,6 +263,14 @@ find outputs/metrics/prompting/dev -maxdepth 1 -name '*__de__*.json' | wc -l  # 
 find outputs/metrics/prompting/dev -maxdepth 1 -name '*__sv__*.json' | wc -l  # 32
 ```
 
+Optional smoke test (manual script, inside a GPU allocation):
+
+```bash
+uv run --locked --no-dev --no-sync python scripts/run_prompting.py --language sv --split dev --models primary --limit 20
+```
+
+- `--split dev` selects DEV when calling the Python script directly
+- `--limit 20` processes only 20 examples and writes to a separate `dev_smoke/` folder; do not count these as full evaluations
 
 ## 8. Select the best DEV prompts
 
@@ -322,7 +354,9 @@ sacct -j <JOBID> --format=JobID,State,ExitCode
 Common problems:
 
 - **No EuroLLM output:** confirm `role: secondary` and `--models secondary`
-- **Missing five-shot IDs:** populate `prompting.five_shot_ids.de` and `.sv`; don't reuse one language's IDs for the other
+- **Missing five-shot IDs:** run `scripts/run_prompting.py --select-ids`, then fill the single `prompting.five_shot_ids` list
+- **No common examples:** verify the DE/SV alignment IDs and matching English texts; a shared set cannot be forced if it does not exist
+- **Old five-shot outputs:** rerun with `--conditions five_shot` without `--skip-existing` after changing IDs
 - **Missing TEST selection:** run DEV selection first and check the language-specific JSON file
 - **Incomplete TEST results:** wait for all 8 prompting and 5 PEFT results per language
 - **Home directory full:** use scratch for the uv installation cache, and confirm `HF_HOME` is set in the Slurm job

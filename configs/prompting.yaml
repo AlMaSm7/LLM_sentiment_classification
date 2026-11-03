@@ -24,26 +24,19 @@ models:
     role: secondary
 
 prompting:
-  id_key: alignment_id # name of id property
+  # name of id property
+  id_key: alignment_id
 
-  # insert five aligned training IDs for each language
+  # one list of five IDs shared by English, German and Swedish
+  # run --select-ids to find valid aligned TRAIN IDs
   five_shot_ids:
-    de:
-      [
-        "en/1965/59037/5735868.xml.gz#606",
-        "en/1954/46754/3224582.xml.gz#16",
-        "en/1990/100404/5649520.xml.gz#1035",
-        "en/1990/100280/4686267.xml.gz#1375",
-        "en/1965/59309/6919338.xml.gz#1941",
-      ]
-    sv:
-      [
-        "en/1990/100530/5989398.xml.gz#575",
-        "en/1965/59309/6919338.xml.gz#1621",
-        "en/1954/46754/6980377.xml.gz#1659",
-        "en/2015/4428728/6758675.xml.gz#636",
-        "en/1965/59309/6919338.xml.gz#1231",
-      ]
+    [
+      "en/2017/6398054/7016299.xml.gz#461",
+      "en/1965/59309/6919338.xml.gz#892",
+      "en/1990/100404/5649520.xml.gz#1027",
+      "en/1990/100404/5649520.xml.gz#975",
+      "en/1965/59309/6919338.xml.gz#695",
+    ]
 
   selection:
     k: 5
