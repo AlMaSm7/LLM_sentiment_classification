@@ -68,26 +68,26 @@ def main() -> None:
 
     run_name = f"{args.language}_{args.condition}_{config['experiment']['name']}_{timestamp}"
 
-    wandb.init(
-        project=config["wandb_project"],
-        mode="online" if config.get("use_wandb", True) else "disabled",
-        name=run_name,
-        config={
-            "language": args.language,
-            "condition": args.condition,
-            "model": config["model"]["name"],
-            "rank": config["peft"]["rank"],
-            "alpha": config["peft"]["alpha"],
-            "dropout": config["peft"]["dropout"],
-            "target_modules": config["peft"]["target_modules"],
-            "learning_rate": config["training"]["learning_rate"],
-            "batch_size": config["training"]["batch_size"],
-            "gradient_accumulation_steps": (config["training"]["gradient_accumulation_steps"]),
-            "epochs": config["training"]["epochs"],
-            "max_seq_length": config["training"]["max_seq_length"],
-            "seed": config["experiment"]["seed"],
-        },
-    )
+    # wandb.init(
+    #     project=config["wandb_project"],
+    #     mode="online" if config.get("use_wandb", True) else "disabled",
+    #     name=run_name,
+    #     config={
+    #         "language": args.language,
+    #         "condition": args.condition,
+    #         "model": config["model"]["name"],
+    #         "rank": config["peft"]["rank"],
+    #         "alpha": config["peft"]["alpha"],
+    #         "dropout": config["peft"]["dropout"],
+    #         "target_modules": config["peft"]["target_modules"],
+    #         "learning_rate": config["training"]["learning_rate"],
+    #         "batch_size": config["training"]["batch_size"],
+    #         "gradient_accumulation_steps": (config["training"]["gradient_accumulation_steps"]),
+    #         "epochs": config["training"]["epochs"],
+    #         "max_seq_length": config["training"]["max_seq_length"],
+    #         "seed": config["experiment"]["seed"],
+    #     },
+    # )
     print("2. Loading data")
     train_data, dev_data = load_training_data(
         language=args.language,

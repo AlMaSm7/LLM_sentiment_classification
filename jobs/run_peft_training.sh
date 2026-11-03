@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name=peft
-#SBATCH --array=0-5%2
+#SBATCH --array=0-2%2
 #SBATCH --time=02:00:00
 #SBATCH --partition=gpushort
 #SBATCH --gpus-per-node=rtx_pro_6000:1
@@ -39,11 +39,11 @@ mkdir -p "$UV_CACHE_DIR" "$TMPDIR"
 # use scratch for hugging face models
 export HF_HOME=/scratch/$USER/llm/hf_cache
 
-# all six experiments
+# all experiments
 EXPERIMENTS=(
-    "de english"
-    "de target"
-    "de bilingual"
+    # "de english"
+    # "de target"
+    # "de bilingual"
     "sv english"
     "sv target"
     "sv bilingual"

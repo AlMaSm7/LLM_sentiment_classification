@@ -1,98 +1,120 @@
 # Cross-lingual multi-label emotion classification
 
-This project investigates whether **parameter-efficient fine-tuning (PEFT)** improves emotion classification compared with **zero-shot and five-shot prompting**, and how much the wording of a prompt affects performance.
+This project investigates **whether parameter-efficient fine-tuning (PEFT) improves multi-label emotion classification compared with zero-shot and five-shot prompting**, how sensitive prompting is to instruction wording, and how well the methods transfer between **English and Swedish**. **Swedish is the only target language.**
 
-We study two language pairs separately: **English–German (DE)** and **English–Swedish (SV)**, using XED-based data. A text may contain more than one of the eight emotions: `anger`, `anticipation`, `disgust`, `fear`, `joy`, `sadness`, `surprise`, and `trust`.
+The data comes from XED-based, aligned English–Swedish subtitle sentences. Each sentence may have more than one emotion: `anger`, `anticipation`, `disgust`, `fear`, `joy`, `sadness`, `surprise`, or `trust`. Neutral-only examples are excluded, so every retained reference has at least one emotion. An empty prediction (`[]`) is considered malformed and receives no predicted labels for scoring.
 
 ## Models and experiments
 
 | Model | Role | Methods |
 |---|---|---|
-| Qwen2.5-3B-Instruct | `primary` | PEFT, zero-shot, five-shot |
-| EuroLLM-9B-Instruct | `secondary` | Zero-shot, five-shot |
+| `Qwen/Qwen2.5-3B-Instruct` | `primary` | QLoRA PEFT, zero-shot, five-shot |
+| `utter-project/EuroLLM-9B-Instruct` | `secondary` | Zero-shot, five-shot |
 
-PEFT has three training conditions: **English-only**, **target-language-only**, and **bilingual**. Prompting compares four instruction versions: `default`, `paraphrase`, `no_format_example`, and `terse`.
+Qwen is fine-tuned in three conditions: **English-only**, **Swedish-only**, and **bilingual (English + Swedish)**. The evaluation matrix includes English and Swedish for English-only and bilingual PEFT, and Swedish for Swedish-only PEFT: **five PEFT evaluations per split**.
 
-We use **DEV** to compare prompt wordings and select the best variant. We evaluate the selected variants on **TEST** without further tuning. Our main performance measure is **Micro F1**, supported by Macro F1, sample Jaccard, per-emotion F1, and malformed-output rates.
+Prompting uses four instruction variants: `default`, `paraphrase`, `no_format_example`, and `terse`. Both models are evaluated on the English and Swedish texts using zero-shot and five-shot prompting.
+
+| Stage | Experiments |
+|---|---:|
+| Prompting DEV | 2 models × 2 languages × 2 shot conditions × 4 variants = **32** |
+| Prompting TEST | 2 models × 2 languages × 2 shot conditions × 1 selected variant = **8** |
+| PEFT DEV / TEST | English-only (EN + SV), Swedish-only (SV), bilingual (EN + SV) = **5 per split** |
+
+**Micro-F1** is the primary metric. Supporting analyses include sample Jaccard, paired bootstrap confidence intervals, output-format reliability, and average predicted labels per sentence.
 
 ## Project structure
 
 ```text
 configs/
-  data.yaml                  # dataset preparation settings
-  peft.yaml                  # fine-tuning settings
-  prompting.yaml             # models, decoding and five-shot example IDs
+  data.yaml
+  peft.yaml
+  prompting.yaml
 
-scripts/                     # command-line entry points
+scripts/
   run_data_preparation.py
   run_peft_training.py
   run_peft_evaluation.py
   run_prompting.py
-  run_results.py
 
-src/llm_project/             # implementation
+src/llm_project/
   data_preparation/
   peft_training.py
   peft_evaluation.py
   prompting.py
-  results.py
-  metrics.py                  # shared parser and metrics
+  metrics.py
   notebook_utils.py
   constants.py
   utils.py
 
-jobs/                        # Slurm scripts for Hábrók
+jobs/
   run_data_preparation.sh
   run_peft_training.sh
   run_peft_evaluation.sh
   run_prompting.sh
-  run_results.sh
 
-outputs/                     # generated models, predictions, scores and figures
-.env.example                 # optional local environment template
+notebooks/
+  generate_report_results.ipynb
+
+outputs/
+  models/
+  predictions/
+  metrics/
+  report/
+  jobs/
+
+.env.example
 README.md
 RUNNING_GUIDE.md
 pyproject.toml
 uv.lock
 ```
 
-Files in `scripts/` accept command-line arguments. The actual processing is implemented in `src/llm_project/`. Prompting and PEFT share the same output parser and scoring functions in `metrics.py`.
+The `scripts/` files are the command-line entry points, while `src/llm_project/` contains the implementation. The **notebook** reads saved prediction and metric files; it does not train or run a language model.
 
 ## Workflow
 
-1. Prepare the English–German and English–Swedish datasets.
-2. Train Qwen PEFT adapters for the three training conditions in each language pair.
-3. Evaluate PEFT on DEV and compare zero-shot/five-shot prompting across four prompt versions on DEV.
-4. Select the best prompt version for **each target language**, using DEV results only.
-5. Run the final prompting and PEFT evaluations on TEST.
-6. Generate combined German/Swedish result tables and figures.
+1. Prepare the aligned English–Swedish TRAIN, DEV, and TEST data
+2. Train the three Qwen PEFT adapters and evaluate them on DEV
+3. Select five aligned English–Swedish training examples and run all **32 prompting DEV experiments**
+4. Run **sections 1–3** of `notebooks/generate_report_results.ipynb` to choose prompt variants from DEV and save `outputs/report/selected_prompt_variants_sv.json`
+5. Run the **8 selected prompting TEST experiments** and **5 PEFT TEST evaluations**
+6. Run the **entire notebook** to display the results and save the Swedish TEST figure
 
-For each target language, prompting produces **32 DEV experiments** and **8 selected TEST experiments**. PEFT contributes **5 TEST evaluations** per target. The aligned English examples may differ between German and Swedish, so we treat these as separate evaluation cohorts.
+For exact Hábrók commands and setup instructions, see [RUNNING_GUIDE.md](RUNNING_GUIDE.md).
+
+## Results notebook
+
+The notebook selects **one prompt wording per model and shot condition** using mean DEV Micro-F1 across English and Swedish, with mean sample Jaccard as the tie-breaker. The selected wording is reused for both input languages. The JSON contains eight model/language/shot keys and must exist **before TEST prompting**.
+
+After TEST, the notebook creates these pandas DataFrames:
+
+| Variable | Contents |
+|---|---|
+| `table2` | Qwen TEST Micro-F1, with DEV Micro-F1 in parentheses |
+| `table3` | Qwen TEST empty-answer rates and average predicted labels per text |
+| `table5` | DEV malformed-output and strict-JSON rates for both prompting models |
+| `table4` | Short paired bootstrap summary for Micro-F1 |
+| `table7` | Complete paired bootstrap comparisons for Micro-F1 |
+| `table4_jaccard` | Short paired bootstrap summary for sample Jaccard |
+
+The bootstrap uses **1,000 paired resamples** and a fixed seed of **42**. Comparisons require matching alignment IDs and gold labels; partial-overlap comparisons may be marked `†`, while insufficiently paired comparisons appear as `—`.
+
+The notebook saves only these report artifacts:
+
+```text
+outputs/report/selected_prompt_variants_sv.json
+outputs/report/sv_test_method_comparison.png
+```
+
 
 ## Before running
 
-- Install the project environment and check your Hábrók Slurm scripts as explained in [RUNNING_GUIDE.md](RUNNING_GUIDE.md).
-- Check `configs/data.yaml` and `configs/peft.yaml` before preparing data or training.
-- Check the model names and roles in `configs/prompting.yaml`. Use `primary` and `secondary`.
-- Store **five aligned demonstration IDs for each target language** under `prompting.five_shot_ids.de` and `prompting.five_shot_ids.sv`. The running guide explains how to find them.
-- Select the prompting language with **`--language de` or `--language sv`**. You no longer need to change `language:` in the YAML file between prompting jobs.
-- `.env.example` is a template for optional local settings. Copy it to `.env` only if needed, fill in your values, and never commit secrets. A `.env` file is not automatically loaded by Python or Slurm.
-
-**All setup instructions and exact commands are in [RUNNING_GUIDE.md](RUNNING_GUIDE.md).**
-
-## Expected results
-
-The analysis reads saved predictions and metrics and writes report-ready files to `outputs/report/`. The main outputs are:
-
-| Output | What it shows |
-|---|---|
-| `combined_test_main_table.tex` / `combined_test_main_results.csv` | PEFT vs zero-shot vs five-shot results for DE and SV |
-| `combined_test_method_comparison.png` | Main Micro F1 comparison |
-| `combined_dev_prompt_sensitivity.png` | Effect of the four prompt wordings on DEV |
-| `combined_test_per_emotion_f1.png` | F1 score for each emotion |
-| `combined_test_language_transfer_table.tex` | English vs German/Swedish evaluation differences |
-| `combined_test_qualitative_candidates.csv` | Examples of correct and incorrect predictions |
-| `combined_test_output_behavior_table.tex` | Malformed and empty model outputs |
-| `combined_test_runtime.csv` | Recorded runtime information |
-
-DEV prompt selections are kept separately in `selected_prompt_variants_de.json` and `selected_prompt_variants_sv.json`. The final analysis does not rerun model inference.
+- Verify that `configs/data.yaml` targets Swedish and `data/processed/sv/` contains aligned English and Swedish data
+- Configure `primary` and `secondary` model roles and five distinct aligned TRAIN demonstration IDs in `configs/prompting.yaml`
+- Verify the five-shot selector checks **English–Swedish only**, not a former German–Swedish setup
+- Confirm the Slurm PEFT array indices corresponding to the three Swedish training conditions
+- Use `--language sv` for prompting and complete all DEV runs before selecting the prompt variants
+- Do not select prompts, checkpoints, or hyperparameters using TEST results
+- Store Hugging Face and uv caches under scratch, as described in the running guide
+- Keep `.env` files and access tokens out of Git; `.env` is not loaded automatically by Python or Slurm

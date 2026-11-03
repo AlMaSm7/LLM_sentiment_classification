@@ -1,11 +1,7 @@
 #!/bin/bash
 # evaluate trained PEFT adapters on dev or test, without retraining
-# submit from the project root:
-#     sbatch --array=0,1 jobs/eval_peft.sh dev
-#     sbatch --array=0,1 jobs/eval_peft.sh test      # ONCE, after the test freeze
-# array index -> experiment, in the same order as EXPERIMENTS below
 #SBATCH --job-name=eval_peft
-#SBATCH --array=0-5%2
+#SBATCH --array=0-2%2
 #SBATCH --time=02:00:00
 #SBATCH --partition=gpushort
 #SBATCH --gpus-per-node=rtx_pro_6000:1
@@ -46,9 +42,9 @@ SPLIT="${1:?usage: sbatch --array=... jobs/eval_peft.sh dev|test}"
 shift   # any further arguments (e.g. --overwrite) are passed on
 
 EXPERIMENTS=(
-    "de english"
-    "de target"
-    "de bilingual"
+    # "de english"
+    # "de target"
+    # "de bilingual"
     "sv english"
     "sv target"
     "sv bilingual"

@@ -32,21 +32,22 @@ class ParsedOutput:
 
 
 def normalize(item: str) -> str:
-    # normalize case and whitespace without changing label meaning
     return " ".join(item.split()).lower()
 
 
 def parse_prediction(raw: str) -> ParsedOutput:
-    # require a complete json array with permitted english label names
     try:
         values = json.loads(raw.strip())
     except (TypeError, json.JSONDecodeError):
         return ParsedOutput((), malformed=True, strict_json=False)
 
-    if not isinstance(values, list) or any(not isinstance(x, str) for x in values):
+    # require a non-empty JSON list containing only strings
+    if not isinstance(values, list) or not values or any(not isinstance(x, str) for x in values):
         return ParsedOutput((), malformed=True, strict_json=False)
 
     normalized = {normalize(value) for value in values}
+
+    # reject unknown emotion labels
     if normalized - _LABEL_SET:
         return ParsedOutput((), malformed=True, strict_json=False)
 

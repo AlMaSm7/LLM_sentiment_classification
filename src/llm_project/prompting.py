@@ -36,7 +36,8 @@ INSTRUCTION_VARIANTS: dict[str, str] = {
         "Classify the emotions expressed in the text.\n\n"
         f"The permitted emotion labels are: {LABEL_LINE}.\n\n"
         "A text can express one emotion or several emotions, so return every "
-        "permitted label that applies.\n\n"
+        "permitted label that applies. At least one emotion must be selected; "
+        "an empty list is not allowed.\n\n"
         "Answer with a JSON list that contains only permitted label names, written "
         'in English exactly as listed (for example ["joy"] or ["anger", "disgust"]). '
         "Do not write anything else."
@@ -45,7 +46,8 @@ INSTRUCTION_VARIANTS: dict[str, str] = {
         "Read the text and decide which emotions it conveys.\n\n"
         f"Use only these eight English labels: {LABEL_LINE}.\n\n"
         "More than one label may fit; include all labels that fit, or a single "
-        "label if only one fits.\n\n"
+        "label if only one fits. Every response must contain at least one "
+        "emotion label, never an empty list.\n\n"
         'Respond with nothing but a JSON list of label names (for example ["joy"] '
         'or ["anger", "disgust"]).'
     ),
@@ -53,13 +55,15 @@ INSTRUCTION_VARIANTS: dict[str, str] = {
         "Classify the emotions expressed in the text.\n\n"
         f"The permitted emotion labels are: {LABEL_LINE}.\n\n"
         "A text can express one emotion or several emotions, so return every "
-        "permitted label that applies.\n\n"
+        "permitted label that applies. Always predict one or more emotions; "
+        "do not return an empty list.\n\n"
         "Answer with a JSON list that contains only permitted label names, written "
         "in English exactly as listed. Do not write anything else."
     ),
     "terse": (
         f"Emotion labels: {LABEL_LINE}.\n"
         "One or several labels may apply.\n"
+        "Select at least one label. Empty lists are forbidden.\n"
         "Output only a JSON list of the applicable English label names."
     ),
 }
@@ -326,7 +330,7 @@ def load_model(model_name: str, dtype: str) -> tuple[Any, Any]:
 
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        torch_dtype=getattr(torch, dtype),
+        dtype=getattr(torch, dtype),
         device_map="auto",
     )
     model.eval()

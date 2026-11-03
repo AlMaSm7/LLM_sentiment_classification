@@ -15,6 +15,6 @@ EMOTION_MAP = {str(index + 1): emotion for index, emotion in enumerate(EMOTIONS)
 
 INSTRUCTION = (
     "Identify all emotions expressed in the text. "
-    "Return only a JSON list using one or more of these labels: "
+    "Return only a JSON list using at least one or more of these labels: "
     "anger, anticipation, disgust, fear, joy, sadness, surprise, trust."
 )
