@@ -24,7 +24,7 @@ outputs/*
 !outputs/models/.gitkeep
 !outputs/predictions/.gitkeep
 !outputs/metrics/.gitkeep
-!outputs/logs/.gitkeep
+!outputs/jobs/.gitkeep
 !outputs/report/.gitkeep
 
 # Hugging Face / training caches

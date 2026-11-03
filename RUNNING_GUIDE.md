@@ -31,6 +31,14 @@ mkdir -p "$HF_HOME" "$UV_CACHE_DIR" "$TMPDIR"
 
 The Slurm job scripts should configure their own cache locations and load Python. Confirm they use scratch rather than the limited home directory. An optional `.env` file can be created from `.env.example`, but it is **not** automatically loaded by Slurm or Python.
 
+Log in to wandb, if `use_wandb: true` in `configs/peft.yaml`:
+
+```bash
+uv run --locked --no-dev --no-sync wandb login
+```
+
+Or use set the `WANDB_API_KEY` in `.env`.
+
 ## 2. Cache both models
 
 Download the model files once on a node where Hugging Face downloads are **permitted**:
@@ -49,6 +57,27 @@ PYCODE
 ```
 
 Existing cached files are reused. If authentication is needed, log in with a read-access token without storing it in the repository. GPU jobs can use `HF_HUB_OFFLINE=1` after both models are fully cached.
+
+Check cached Hugging Face Models:
+
+```bash
+export HF_HOME="/scratch/$USER/llm/hf_cache"
+
+find "${HF_HUB_CACHE:-$HF_HOME/hub}" \
+    -maxdepth 1 \
+    -type d \
+    -name "models--*" \
+    -printf '%f\n' \
+    | sed 's/^models--//; s/--/\//g' \
+    | sort
+```
+
+Expected output:
+
+```bash
+Qwen/Qwen2.5-3B-Instruct
+utter-project/EuroLLM-9B-Instruct
+```
 
 ## 3. Confirm the Swedish configuration and job scripts
 
@@ -89,6 +118,15 @@ The intended Slurm/Python pairs are:
 Check that `jobs/run_prompting.sh` forwards `"$@"` and accepts `dev` or `test` as its first positional argument. The final tables and figure are generated in Jupyter, not by a results Slurm job.
 
 ## 4. Prepare the English–Swedish datasets
+Select correct target language and corpus in `configs/data.yaml`:
+```yaml
+source_language: en
+target_language: sv
+
+opus:
+  corpus: OpenSubtitles
+  release: v2018
+```
 
 ```bash
 sbatch jobs/run_data_preparation.sh
@@ -215,7 +253,7 @@ The notebook also saves:
 outputs/report/sv_test_method_comparison.png
 ```
 
-The figure shows actual **saved TEST Micro-F1** scores for Qwen prompting, Qwen PEFT, and EuroLLM prompting. The notebook **does not create LaTeX table files or CSV exports**. Copy the DataFrame values into the report after verifying them.
+The figure shows actual **saved TEST Micro-F1** scores for Qwen prompting, Qwen PEFT, and EuroLLM prompting.
 
 Bootstrap results use **1,000 paired resamples** and seed 42. Each comparison matches predictions by `alignment_id` and verifies matching gold labels. If at least 80% of both runs overlap and at least 20 examples match, the comparison uses the shared examples; results with partial overlap are marked `†`. Otherwise the comparison is shown as `—`. A partial-overlap comparison describes only the shared subset, not necessarily the full TEST set.
 
@@ -225,6 +263,9 @@ A consistency-check cell compares saved Micro-F1 against scores reconstructed fr
 
 ```bash
 squeue -u "$USER"
+```
+
+```bash
 sacct -j <JOBID> --format=JobID,State,ExitCode
 ```
 

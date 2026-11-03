@@ -6,7 +6,8 @@ model:
   name: "Qwen/Qwen2.5-3B-Instruct"
 
 use_wandb: false
-wandb_project: "peft_emotion_classification"
+wandb_project: peft_emotion_classification
+wandb_mode: online
 
 peft:
   method: "qlora" # change to qlora / lora if needed

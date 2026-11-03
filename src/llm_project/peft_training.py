@@ -263,6 +263,9 @@ def train_model(
         seed=config["experiment"]["seed"],
         save_total_limit=2,  # keep two checkpoints in total
         report_to="wandb" if config["use_wandb"] else "none",
+        logging_strategy="steps",
+        logging_steps=10,
+        logging_first_step=True,
         run_name=experiment,
     )
 

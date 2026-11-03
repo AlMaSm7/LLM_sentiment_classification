@@ -46,6 +46,7 @@ src/llm_project/
   notebook_utils.py
   constants.py
   utils.py
+  wandb_logging.py
 
 jobs/
   run_data_preparation.sh
