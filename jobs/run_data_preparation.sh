@@ -17,5 +17,5 @@ export TMPDIR="/scratch/$USER/llm/tmp"
 export HF_HOME="/scratch/$USER/llm/hf_cache"
 mkdir -p "$UV_CACHE_DIR" "$TMPDIR" "$HF_HOME"
 
-# forward --stage and its value to Python
+# forward its arguments to Python
 uv run --locked --no-dev --no-sync python scripts/run_data_preparation.py "$@"
