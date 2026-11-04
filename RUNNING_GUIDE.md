@@ -2,8 +2,6 @@
 
 This guide covers the **Swedish target-language experiment** on the University of Groningen Hábrók cluster. Run commands from the repository root. The project uses English–Swedish aligned XED/OPUS subtitles, Qwen2.5-3B-Instruct (prompting and QLoRA), and EuroLLM-9B-Instruct (prompting only).
 
-**Important:** Data preparation is now divided into explicit stages. If your TRAIN/DEV/TEST split already exists, use `--stage rebalance` to update only the bilingual training file. **Do not recreate your split just to rebalance training.**
-
 ## 1. Set up the environment
 
 ```bash
@@ -21,6 +19,12 @@ uv run --locked --no-dev --no-sync python -m compileall -q src scripts
 ```
 
 The Slurm scripts must export the same cache paths. `uv run --locked --no-dev --no-sync` reuses the prepared environment without installing dependencies in a job. Never commit `.env` files or access tokens.
+
+**Weights & Biases (W&B):** Optional experiment tracking for PEFT training. Set `WANDB_API_KEY` in `.env` and enable it in `configs/peft.yaml`:
+
+- `use_wandb: true` — enable logging
+- `use_wandb: false` — disable logging
+- `wandb_mode: "offline"` — save logs locally without internet access
 
 ## 2. Data-preparation stages
 
@@ -41,7 +45,7 @@ split:
   test: 0.1
 ```
 
-`run_data_preparation.py` now requires `--stage`:
+`run_data_preparation.py` requires `--stage`:
 
 | Flag | Effect | Changes existing splits? | Downloads? |
 |---|---|---|---|
