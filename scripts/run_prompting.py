@@ -13,15 +13,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", default="configs/prompting.yaml")
     parser.add_argument(
         "--language",
-        choices=["de", "sv"],
-        help="target language for experiments (not needed with --select-ids)",
+        choices=["sv"],
+        default="sv",
+        help="target language (Swedish only; default: sv)",
     )
     parser.add_argument("--split", choices=["dev", "test"], default="dev")
     parser.add_argument("--sensitivity", action="store_true")
     parser.add_argument(
         "--select-ids",
         action="store_true",
-        help="select one shared set of IDs for English, German and Swedish",
+        help="select five aligned English-Swedish training examples",
     )
     parser.add_argument(
         "--models",

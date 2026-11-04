@@ -73,6 +73,8 @@ def main() -> None:
         language=args.language,
         condition=args.condition,
     )
+    print(f"Training examples: {len(train_data)}")
+    print(f"Development examples: {len(dev_data)}")
 
     print("3. Building model")
     model, tokenizer = build_model(config)

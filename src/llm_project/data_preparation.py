@@ -1,4 +1,5 @@
 import json
+import random
 import unicodedata
 from pathlib import Path
 from urllib.request import urlretrieve
@@ -254,6 +255,8 @@ def build_matched_pairs(
     # now, handle ambiguous cases because it can happen that if exactly the same target sentence
     # occurs at multiple OPUS alignment IDs, we can't know which occurrence corresponds to XED from text alone
     # so, drop those ambiguous cases
+
+    # tODO: maybe filter by semantic similarity using embeddings later
     counts = matched.groupby("target_key")["alignment_id"].nunique()
 
     ambiguous = set(counts[counts > 1].index)
@@ -350,7 +353,10 @@ def validate_split(
     if (english_counts > 1).any():
         raise ValueError("Duplicate English lines occur across partitions.")
 
-    # same for target language --> exact duplicate target-language lines cannot cross partitions
+    # -----------------------------------------
+    # same for target language
+    # -----------------------------------------
+    # exact duplicate target-language lines cannot cross partitions
     target_counts = df.groupby("target_key")["split"].nunique()
     if (target_counts > 1).any():
         raise ValueError("Duplicate target-language lines occur across partitions.")
@@ -398,6 +404,81 @@ def write_jsonl(
     with file_path.open("w", encoding="utf-8") as file:
         for record in records:
             file.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def balanced_bilingual_records(
+    english_records: list[dict],
+    target_records: list[dict],
+    target_language: str,
+    seed: int,
+) -> list[dict]:
+    """Select one language per aligned TRAIN pair, with equal total size."""
+
+    def index_by_id(records: list[dict], language: str) -> dict[str, dict]:
+        indexed = {}
+        for record in records:
+            if record["language"] != language:
+                raise ValueError(f"Expected language {language!r} in training records")
+            alignment_id = str(record["alignment_id"])
+            if alignment_id in indexed:
+                raise ValueError(f"Duplicate alignment ID: {alignment_id}")
+            indexed[alignment_id] = record
+        return indexed
+
+    english = index_by_id(english_records, "en")
+    target = index_by_id(target_records, target_language)
+
+    if not english or english.keys() != target.keys():
+        raise ValueError("English and target TRAIN alignment IDs do not match")
+
+    # check matching gold labels before selecting a language
+    for alignment_id in english:
+        if json.loads(english[alignment_id]["output"]) != json.loads(
+            target[alignment_id]["output"]
+        ):
+            raise ValueError(f"Conflicting labels for alignment ID {alignment_id}")
+
+    rng = random.Random(seed)
+    ids = sorted(english)
+    rng.shuffle(ids)
+    n_english = (len(ids) + 1) // 2
+
+    bilingual = [
+        english[alignment_id] if i < n_english else target[alignment_id]
+        for i, alignment_id in enumerate(ids)
+    ]
+    rng.shuffle(bilingual)
+
+    print(
+        f"Balanced bilingual TRAIN: {len(bilingual)} examples "
+        f"({n_english} EN, {len(bilingual) - n_english} {target_language.upper()})"
+    )
+    return bilingual
+
+
+def rebalance_existing_training(
+    project_root: str | Path,
+    target_language: str,
+    seed: int,
+) -> None:
+    """Rewrite ONLY the bilingual TRAIN file using existing processed TRAIN splits."""
+    folder = Path(project_root) / "data" / "processed" / target_language
+
+    def read_jsonl(path: Path) -> list[dict]:
+        if not path.is_file():
+            raise FileNotFoundError(f"Missing {path}. Run --stage split first.")
+        with path.open(encoding="utf-8") as file:
+            return [json.loads(line) for line in file if line.strip()]
+
+    english = read_jsonl(folder / "train_en.jsonl")
+    target = read_jsonl(folder / f"train_{target_language}.jsonl")
+    balanced = balanced_bilingual_records(english, target, target_language, seed)
+
+    output = folder / "train_bilingual.jsonl"
+    temporary = folder / "train_bilingual.jsonl.tmp"
+    write_jsonl(balanced, temporary)
+    temporary.replace(output)
+    print(f"Updated {output} without modifying TRAIN/DEV/TEST assignments")
 
 
 def save_processed_data(
@@ -455,8 +536,13 @@ def save_processed_data(
         write_jsonl(english_records, output_dir / f"{split}_en.jsonl")
         write_jsonl(target_records, output_dir / f"{split}_{target_language}.jsonl")
 
-        # bilingual training/evaluation set -> same aligned IDs, both languages
-        bilingual_records = english_records + target_records
+        # balance TRAIN once & keep DEV/TEST bilingual files unchanged
+        if split == "train":
+            bilingual_records = balanced_bilingual_records(
+                english_records, target_records, target_language, seed
+            )
+        else:
+            bilingual_records = english_records + target_records
 
         write_jsonl(bilingual_records, output_dir / f"{split}_bilingual.jsonl")
 
@@ -475,52 +561,57 @@ def save_processed_data(
 def run_pipeline(
     project_root: str | Path,
     config_path: str | Path,
+    stage: str = "all",
 ) -> None:
+    """Download sources, build splits, or rebalance existing TRAIN records."""
+    if stage not in ("download", "split", "rebalance", "all"):
+        raise ValueError(f"Unknown data preparation stage: {stage}")
 
     project_root = Path(project_root)
-
     config = load_config(config_path)
-
     source_language = config["source_language"]
     target_language = config["target_language"]
-
     seed = config["split"]["seed"]
 
     raw_xed_dir = project_root / "data" / "raw" / "xed"
     raw_opus_dir = project_root / "data" / "raw" / "opus"
     processed_dir = project_root / "data" / "processed"
 
-    # 1. XED labels
-    xed_file = download_xed_projection(
-        target_language=target_language,
-        output_dir=raw_xed_dir,
-    )
+    if stage == "rebalance":
+        rebalance_existing_training(project_root, target_language, seed)
+        return
+
+    # only the download stage contacts the source servers or extracts OPUS
+    if stage in ("download", "all"):
+        download_xed_projection(target_language, raw_xed_dir)
+        create_opus_pairs(
+            source_language=source_language,
+            target_language=target_language,
+            corpus=config["opus"]["corpus"],
+            release=config["opus"]["release"],
+            output_dir=raw_opus_dir,
+        )
+        if stage == "download":
+            print("Download stage complete. Existing processed splits were not touched.")
+            return
+
+    # split stage reads already downloaded files; it never downloads sources
+    xed_file = raw_xed_dir / f"{target_language}-projections.tsv"
+    pair_dir = raw_opus_dir / f"{source_language}-{target_language}"
+    source_file = pair_dir / f"{source_language}-{target_language}.{source_language}.txt"
+    target_file = pair_dir / f"{source_language}-{target_language}.{target_language}.txt"
+    ids_file = pair_dir / f"{source_language}-{target_language}.ids.tsv"
+
+    for path in (xed_file, source_file, target_file, ids_file):
+        if not path.is_file():
+            raise FileNotFoundError(f"Missing source file: {path}. First run --stage download.")
+
     xed = load_xed_projection(xed_file)
     print(f"XED labelled examples: {len(xed)}")
-
-    # 2. OPUS alignment
-    source_file, target_file, ids_file = create_opus_pairs(
-        source_language=source_language,
-        target_language=target_language,
-        corpus=config["opus"]["corpus"],
-        release=config["opus"]["release"],
-        output_dir=raw_opus_dir,
-    )
-
-    opus = load_opus_pairs(
-        source_file=source_file,
-        target_file=target_file,
-        ids_file=ids_file,
-    )
-
-    # 3. matched English-target XED pairs
-    pairs = build_matched_pairs(
-        xed,
-        opus,
-    )
+    opus = load_opus_pairs(source_file, target_file, ids_file)
+    pairs = build_matched_pairs(xed, opus)
     print(f"Final matched pairs: {len(pairs)}")
 
-    # 4. fixed stratified 70/20/10 split determined in data.yaml
     pairs = create_fixed_split(
         df=pairs,
         seed=seed,
@@ -528,15 +619,20 @@ def run_pipeline(
         dev_ratio=config["split"]["dev"],
         test_ratio=config["split"]["test"],
     )
-
-    # 5. leakage / duplicate validation
     validate_split(pairs)
 
-    # 6. save datasets
-    save_processed_data(
-        df=pairs,
-        target_language=(target_language),
-        output_dir=processed_dir,
-        seed=seed,
-    )
-    print("\nData preparation complete.")
+    # prevent accidentally changing an established split during later reruns
+    assignment_file = processed_dir / target_language / "split_assignments.csv"
+    if assignment_file.exists():
+        existing = pd.read_csv(assignment_file, dtype={"alignment_id": str})
+        old_assignments = dict(zip(existing["alignment_id"], existing["split"], strict=True))
+        new_assignments = dict(zip(pairs["alignment_id"].astype(str), pairs["split"], strict=True))
+        if old_assignments != new_assignments:
+            raise ValueError(
+                "Existing TRAIN/DEV/TEST assignments differ from the regenerated split. "
+                "No files were overwritten. Use --stage rebalance to modify only "
+                "the bilingual training data."
+            )
+
+    save_processed_data(pairs, target_language, processed_dir, seed)
+    print("Data preparation complete.")

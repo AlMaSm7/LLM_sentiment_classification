@@ -1,3 +1,5 @@
+language: sv
+
 experiment:
   name: phase2_prompting
 
@@ -7,11 +9,9 @@ data:
   dir: data/processed/{lang}
   train_en: train_en.jsonl
   train_target: train_{lang}.jsonl
-
   dev:
     en: dev_en.jsonl
     target: dev_{lang}.jsonl
-
   test:
     en: test_en.jsonl
     target: test_{lang}.jsonl
@@ -19,23 +19,21 @@ data:
 models:
   - name: Qwen/Qwen2.5-3B-Instruct
     role: primary
-
   - name: utter-project/EuroLLM-9B-Instruct
     role: secondary
 
 prompting:
-  # name of id property
   id_key: alignment_id
 
-  # one list of five IDs shared by English, German and Swedish
+  # five aligned IDs shared by English and Swedish
   # run --select-ids to find valid aligned TRAIN IDs
   five_shot_ids:
     [
-      "en/2017/6398054/7016299.xml.gz#461",
-      "en/1965/59309/6919338.xml.gz#892",
-      "en/1990/100404/5649520.xml.gz#1027",
-      "en/1990/100404/5649520.xml.gz#975",
-      "en/1965/59309/6919338.xml.gz#695",
+      "en/1990/100530/5989398.xml.gz#575",
+      "en/1965/59309/6919338.xml.gz#1621",
+      "en/1954/46754/6980377.xml.gz#1659",
+      "en/2015/4428728/6758675.xml.gz#636",
+      "en/1965/59309/6919338.xml.gz#1231",
     ]
 
   selection:

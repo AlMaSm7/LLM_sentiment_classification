@@ -5,7 +5,6 @@ import hashlib
 import json
 import random
 import time
-import unicodedata
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
@@ -36,8 +35,7 @@ INSTRUCTION_VARIANTS: dict[str, str] = {
         "Classify the emotions expressed in the text.\n\n"
         f"The permitted emotion labels are: {LABEL_LINE}.\n\n"
         "A text can express one emotion or several emotions, so return every "
-        "permitted label that applies. At least one emotion must be selected; "
-        "an empty list is not allowed.\n\n"
+        "permitted label that applies.\n\n"
         "Answer with a JSON list that contains only permitted label names, written "
         'in English exactly as listed (for example ["joy"] or ["anger", "disgust"]). '
         "Do not write anything else."
@@ -46,8 +44,7 @@ INSTRUCTION_VARIANTS: dict[str, str] = {
         "Read the text and decide which emotions it conveys.\n\n"
         f"Use only these eight English labels: {LABEL_LINE}.\n\n"
         "More than one label may fit; include all labels that fit, or a single "
-        "label if only one fits. Every response must contain at least one "
-        "emotion label, never an empty list.\n\n"
+        "label if only one fits.\n\n"
         'Respond with nothing but a JSON list of label names (for example ["joy"] '
         'or ["anger", "disgust"]).'
     ),
@@ -55,15 +52,13 @@ INSTRUCTION_VARIANTS: dict[str, str] = {
         "Classify the emotions expressed in the text.\n\n"
         f"The permitted emotion labels are: {LABEL_LINE}.\n\n"
         "A text can express one emotion or several emotions, so return every "
-        "permitted label that applies. Always predict one or more emotions; "
-        "do not return an empty list.\n\n"
+        "permitted label that applies.\n\n"
         "Answer with a JSON list that contains only permitted label names, written "
         "in English exactly as listed. Do not write anything else."
     ),
     "terse": (
         f"Emotion labels: {LABEL_LINE}.\n"
         "One or several labels may apply.\n"
-        "Select at least one label. Empty lists are forbidden.\n"
         "Output only a JSON list of the applicable English label names."
     ),
 }
@@ -330,7 +325,7 @@ def load_model(model_name: str, dtype: str) -> tuple[Any, Any]:
 
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        dtype=getattr(torch, dtype),
+        torch_dtype=getattr(torch, dtype),
         device_map="auto",
     )
     model.eval()
@@ -395,7 +390,7 @@ def write_prompt_card(
         "## Demonstration selection",
         f"- fixed aligned IDs: {list(ids)}",
         f"- selection: {config['prompting']['selection']}",
-        "- English, German and Swedish prompts use the same aligned demonstration IDs",
+        "- English and Swedish prompts use the same aligned demonstration IDs",
         "",
     ]
 
@@ -545,70 +540,53 @@ def run_experiment(
 
 
 def load_shared_training_data(project_root: Path, config: dict) -> dict[str, list[dict[str, Any]]]:
-    """Load the training records for both aligned language pairs"""
+    """Load aligned English and Swedish training examples"""
     return {
-        "en_de": read_rows(data_path(project_root, config, "train_en", "de")),
-        "de": read_rows(data_path(project_root, config, "train_target", "de")),
-        "en_sv": read_rows(data_path(project_root, config, "train_en", "sv")),
+        "en": read_rows(data_path(project_root, config, "train_en", "sv")),
         "sv": read_rows(data_path(project_root, config, "train_target", "sv")),
     }
 
 
 def find_shared_ids(datasets: dict[str, list[dict[str, Any]]], id_key: str) -> list[Any]:
-    """Find training IDs with the same English sentence and labels in both cohorts"""
-    by_language = {
-        language: {row[id_key]: row for row in rows} for language, rows in datasets.items()
-    }
-    common = set.intersection(*(set(rows) for rows in by_language.values()))
-    shared = []
+    """Find English-Swedish alignment IDs with matching emotion labels"""
+    english = {row[id_key]: row for row in datasets["en"]}
+    swedish = {row[id_key]: row for row in datasets["sv"]}
 
-    for identifier in sorted(common, key=str):
-        en_de = by_language["en_de"][identifier]
-        en_sv = by_language["en_sv"][identifier]
-        labels = gold_labels(en_de["output"])
+    # reject repeated alignment IDs instead of silently overwriting examples
+    if len(english) != len(datasets["en"]) or len(swedish) != len(datasets["sv"]):
+        raise ValueError("Duplicate alignment IDs in the English or Swedish training data")
 
-        # an OPUS ID alone does not guarantee the same sentence in both corpora
-        english_de = unicodedata.normalize("NFKC", en_de["input"]).split()
-        english_sv = unicodedata.normalize("NFKC", en_sv["input"]).split()
-        if english_de != english_sv:
-            continue
-
-        if any(
-            gold_labels(by_language[language][identifier]["output"]) != labels
-            for language in ("de", "en_sv", "sv")
-        ):
-            continue
-
-        shared.append(identifier)
-
-    return shared
+    shared = set(english) & set(swedish)
+    return [
+        identifier
+        for identifier in sorted(shared, key=str)
+        if gold_labels(english[identifier]["output"]) == gold_labels(swedish[identifier]["output"])
+    ]
 
 
 def select_shared_ids(config: dict, datasets: dict[str, list[dict[str, Any]]]) -> list[Any]:
-    """Select five demonstrations from the common English/German/Swedish pool"""
+    """Select five aligned English-Swedish demonstrations covering all emotions"""
     id_key = config["prompting"]["id_key"]
     shared = set(find_shared_ids(datasets, id_key))
     if not shared:
         raise ValueError(
-            "No common training examples were found across English, German and Swedish "
-            "with identical alignment IDs, English text and labels. "
-            "The DE and SV data pipelines may need a shared three-language alignment."
+            "No aligned English-Swedish TRAIN examples with matching labels were found"
         )
 
-    english = [row for row in datasets["en_de"] if row[id_key] in shared]
-    german = [row for row in datasets["de"] if row[id_key] in shared]
+    english = [row for row in datasets["en"] if row[id_key] in shared]
+    swedish = [row for row in datasets["sv"] if row[id_key] in shared]
     try:
-        return select_covering_ids(english, german, id_key, **config["prompting"]["selection"])
+        return select_covering_ids(english, swedish, id_key, **config["prompting"]["selection"])
     except ValueError as exc:
         raise ValueError(
-            f"Found {len(shared)} shared training IDs, but could not select five "
-            "that cover all eight emotions. The separately prepared language pairs "
-            "may not have enough common examples."
+            f"Found {len(shared)} aligned English-Swedish TRAIN examples, "
+            "but could not select five that cover all eight emotions "
+            "under the configured selection constraints"
         ) from exc
 
 
 def show_demonstration_ids(config: dict, datasets: dict[str, list[dict[str, Any]]]) -> None:
-    """Print five IDs that can be used unchanged across all three languages"""
+    """Print the five aligned English-Swedish demonstration IDs"""
     id_key = config["prompting"]["id_key"]
     ids = select_shared_ids(config, datasets)
     by_language = {
@@ -616,10 +594,9 @@ def show_demonstration_ids(config: dict, datasets: dict[str, list[dict[str, Any]
     }
 
     for identifier in ids:
-        print(f"{identifier}  {gold_labels(by_language['en_de'][identifier]['output'])}")
-        for language in ("en_de", "de", "sv"):
-            display_name = "EN" if language == "en_de" else language.upper()
-            print(f"   {display_name}: {by_language[language][identifier]['input']}")
+        print(f"{identifier}  {gold_labels(by_language['en'][identifier]['output'])}")
+        for language in ("en", "sv"):
+            print(f"   {language.upper()}: {by_language[language][identifier]['input']}")
 
     print("\nCopy into configs/prompting.yaml -> prompting.five_shot_ids:")
     print(json.dumps(ids, ensure_ascii=False))
@@ -641,13 +618,13 @@ def validate_shared_ids(
     datasets: dict[str, list[dict[str, Any]]],
     id_key: str,
 ) -> None:
-    """Reject IDs that are not the same labeled example in all three languages"""
+    """Verify every demonstration is aligned across English and Swedish"""
     valid = set(find_shared_ids(datasets, id_key))
     invalid = [identifier for identifier in ids if identifier not in valid]
     if invalid:
         raise ValueError(
-            f"Shared five-shot IDs are not aligned TRAIN examples in all three "
-            f"languages with matching labels and English text: {invalid}. "
+            f"Five-shot IDs are missing or have conflicting labels in "
+            f"English-Swedish TRAIN pairs: {invalid}. "
             "Run --select-ids to choose valid shared IDs."
         )
 
@@ -664,7 +641,7 @@ def run_prompting_experiments(
     limit: int | None = None,
     skip_existing: bool = False,
 ) -> None:
-    """Run experiments for the language selected on the command line"""
+    """Run English and Swedish prompting experiments for the Swedish dataset"""
     if split == "test" and (sensitivity or limit is not None):
         raise ValueError("TEST does not allow sensitivity tuning or a limited evaluation")
     if limit is not None and limit <= 0:
@@ -675,15 +652,15 @@ def run_prompting_experiments(
         config_file = project_root / config_file
     config = yaml.safe_load(config_file.read_text(encoding="utf-8"))
 
-    # select IDs globally without needing a target-language flag
+    target_lang = language or config.get("language", "sv")
+    if target_lang != "sv":
+        raise ValueError("This prompting pipeline supports Swedish (sv) only")
+
+    # selection requires aligned English-Swedish TRAIN pairs only
     if select_ids:
         shared_data = load_shared_training_data(project_root, config)
         show_demonstration_ids(config, shared_data)
         return
-
-    target_lang = language or config.get("language")
-    if target_lang not in ("de", "sv"):
-        raise ValueError("Choose --language de or --language sv")
 
     conditions_to_run = conditions if conditions is not None else CONDITIONS
     if set(conditions_to_run) - set(CONDITIONS):
@@ -702,7 +679,7 @@ def run_prompting_experiments(
     ids = get_five_shot_ids(config)
     validate_shared_ids(ids, shared_data, id_key)
     demos = {
-        "en": build_examples(ids, shared_data[f"en_{target_lang}"], id_key),
+        "en": build_examples(ids, shared_data["en"], id_key),
         target_lang: build_examples(ids, shared_data[target_lang], id_key),
     }
     datasets = load_evaluation_data(project_root, config, target_lang, split, limit)

@@ -1,124 +1,31 @@
-# Running guide — English–Swedish
+# Running guide — English–Swedish emotion classification
 
-This guide explains how to run the **Swedish-only target experiment** on the University of Groningen **Hábrók HPC cluster**, then prepare the report results in Jupyter. Run shell commands from the repository root unless specified otherwise.
+This guide covers the **Swedish target-language experiment** on the University of Groningen Hábrók cluster. Run commands from the repository root. The project uses English–Swedish aligned XED/OPUS subtitles, Qwen2.5-3B-Instruct (prompting and QLoRA), and EuroLLM-9B-Instruct (prompting only).
 
-## 1. Prepare the Python environment
+**Important:** Data preparation is now divided into explicit stages. If your TRAIN/DEV/TEST split already exists, use `--stage rebalance` to update only the bilingual training file. **Do not recreate your split just to rebalance training.**
 
-Connect to Hábrók and open the repository:
+## 1. Set up the environment
 
 ```bash
 cd /scratch/$USER/llm/LLM_sentiment_classification
 module load Python/3.12.3-GCCcore-13.3.0
-mkdir -p outputs/jobs jobs/logs /scratch/$USER/llm/uv_cache /scratch/$USER/llm/tmp
-```
+mkdir -p outputs/jobs jobs/logs
 
-Install the locked environment once:
-
-```bash
-UV_CACHE_DIR="/scratch/$USER/llm/uv_cache" \
-TMPDIR="/scratch/$USER/llm/tmp" \
-uv sync --locked --no-dev
-```
-
-For commands run **manually** rather than through Slurm, set the cache locations in your terminal:
-
-```bash
 export HF_HOME="/scratch/$USER/llm/hf_cache"
 export UV_CACHE_DIR="/scratch/$USER/llm/uv_cache"
 export TMPDIR="/scratch/$USER/llm/tmp"
 mkdir -p "$HF_HOME" "$UV_CACHE_DIR" "$TMPDIR"
+
+uv sync --locked --no-dev
+uv run --locked --no-dev --no-sync python -m compileall -q src scripts
 ```
 
-The Slurm job scripts should configure their own cache locations and load Python. Confirm they use scratch rather than the limited home directory. An optional `.env` file can be created from `.env.example`, but it is **not** automatically loaded by Slurm or Python.
+The Slurm scripts must export the same cache paths. `uv run --locked --no-dev --no-sync` reuses the prepared environment without installing dependencies in a job. Never commit `.env` files or access tokens.
 
-Log in to wandb, if `use_wandb: true` in `configs/peft.yaml`:
+## 2. Data-preparation stages
 
-```bash
-uv run --locked --no-dev --no-sync wandb login
-```
+`configs/data.yaml` should identify the Swedish target and fixed split seed (currently `40`):
 
-Or use set the `WANDB_API_KEY` in `.env`.
-
-## 2. Cache both models
-
-Download the model files once on a node where Hugging Face downloads are **permitted**:
-
-```bash
-unset HF_HUB_OFFLINE
-uv run --locked --no-dev --no-sync python - <<'PYCODE'
-from huggingface_hub import snapshot_download
-
-for model in (
-    "Qwen/Qwen2.5-3B-Instruct",
-    "utter-project/EuroLLM-9B-Instruct",
-):
-    print(model, snapshot_download(repo_id=model))
-PYCODE
-```
-
-Existing cached files are reused. If authentication is needed, log in with a read-access token without storing it in the repository. GPU jobs can use `HF_HUB_OFFLINE=1` after both models are fully cached.
-
-Check cached Hugging Face Models:
-
-```bash
-export HF_HOME="/scratch/$USER/llm/hf_cache"
-
-find "${HF_HUB_CACHE:-$HF_HOME/hub}" \
-    -maxdepth 1 \
-    -type d \
-    -name "models--*" \
-    -printf '%f\n' \
-    | sed 's/^models--//; s/--/\//g' \
-    | sort
-```
-
-Expected output:
-
-```bash
-Qwen/Qwen2.5-3B-Instruct
-utter-project/EuroLLM-9B-Instruct
-```
-
-## 3. Confirm the Swedish configuration and job scripts
-
-Set the dataset target to Swedish in `configs/data.yaml`. In `configs/prompting.yaml`, use these model roles:
-
-```yaml
-models:
-  - name: Qwen/Qwen2.5-3B-Instruct
-    role: primary
-  - name: utter-project/EuroLLM-9B-Instruct
-    role: secondary
-```
-
-The five-shot prompting configuration uses a **single list of five distinct aligned IDs**:
-
-```yaml
-prompting:
-  id_key: alignment_id
-  five_shot_ids: []
-  selection:
-    k: 5
-    seed: 42
-    min_words: 5
-    max_words: 20
-    max_labels: 3
-    min_single: 1
-```
-
-The intended Slurm/Python pairs are:
-
-| Slurm job | Python entry point |
-|---|---|
-| `jobs/run_data_preparation.sh` | `scripts/run_data_preparation.py` |
-| `jobs/run_peft_training.sh` | `scripts/run_peft_training.py` |
-| `jobs/run_peft_evaluation.sh` | `scripts/run_peft_evaluation.py` |
-| `jobs/run_prompting.sh` | `scripts/run_prompting.py` |
-
-Check that `jobs/run_prompting.sh` forwards `"$@"` and accepts `dev` or `test` as its first positional argument. The final tables and figure are generated in Jupyter, not by a results Slurm job.
-
-## 4. Prepare the English–Swedish datasets
-Select correct target language and corpus in `configs/data.yaml`:
 ```yaml
 source_language: en
 target_language: sv
@@ -126,140 +33,196 @@ target_language: sv
 opus:
   corpus: OpenSubtitles
   release: v2018
+
+split:
+  seed: 40
+  train: 0.7
+  dev: 0.2
+  test: 0.1
 ```
+
+`run_data_preparation.py` now requires `--stage`:
+
+| Flag | Effect | Changes existing splits? | Downloads? |
+|---|---|---|---|
+| `--stage download` | Fetch missing XED projections and export OPUS EN–SV pairs/IDs | No | Yes, if needed |
+| `--stage split` | Match XED to cached OPUS, clean, stratify, and save JSONL files | Creates initial split; checks against existing assignments | No |
+| `--stage rebalance` | Rebuild **only** `train_bilingual.jsonl` from existing `train_en.jsonl` and `train_sv.jsonl` | **No** | **No** |
+| `--stage all` | Download and then create the split | Creates/checks initial split | If needed |
+
+### First-time setup: download, then split
+
+Submit these jobs **one after the other** (wait for the download job to finish before starting the split job):
 
 ```bash
-sbatch jobs/run_data_preparation.sh
+sbatch jobs/run_data_preparation.sh --stage download
+# wait until the download has completed successfully
+sbatch jobs/run_data_preparation.sh --stage split
 ```
 
-After the job finishes, check the processed folder:
+The download stage creates/caches these files:
+
+```text
+data/raw/xed/sv-projections.tsv
+data/raw/opus/en-sv/en-sv.en.txt
+data/raw/opus/en-sv/en-sv.sv.txt
+data/raw/opus/en-sv/en-sv.ids.tsv
+data/raw/opus/cache/...
+```
+
+The split stage uses these local files only. It saves `train_en.jsonl`, `train_sv.jsonl`, `train_bilingual.jsonl` and the corresponding DEV and TEST files under `data/processed/sv/`.
+
+It also saves `split_assignments.csv` and `split_manifest.json`. If existing split assignments would change, the code **raises an error rather than overwriting them**. Keep the original split unchanged throughout the experiment.
+
+### Existing data: rebalance the bilingual TRAIN file only
+
+This is the command to use **now** if you already have correct TRAIN/DEV/TEST files:
 
 ```bash
-ls data/processed/sv/
+sbatch jobs/run_data_preparation.sh --stage rebalance
 ```
 
-It should contain aligned English and Swedish TRAIN, DEV, and TEST records, including `train_en.jsonl`, `train_sv.jsonl`, `dev_en.jsonl`, `dev_sv.jsonl`, `test_en.jsonl`, and `test_sv.jsonl`. Each aligned pair shares an alignment ID and emotion labels. Neutral-only records are excluded. **Keep the split fixed** for the entire experiment.
+Or run it on a login/CPU environment directly:
 
-## 5. Train and evaluate Qwen PEFT on DEV
+```bash
+uv run --locked --no-dev --no-sync python scripts/run_data_preparation.py --stage rebalance
+```
 
-Three adapters are required: **English-only**, **Swedish-only**, and **bilingual
+The rebalance stage reads the existing `train_en.jsonl` and `train_sv.jsonl`, matches rows by `alignment_id`, verifies their gold emotion labels, and selects **one language per aligned pair**. It uses the fixed seed in `configs/data.yaml` (`split.seed`), so the output is reproducible. No XED or OPUS data is downloaded, and **all English-only, Swedish-only, DEV and TEST files stay unchanged**.
+
+For example, if TRAIN contains 1,733 aligned pairs, expected bilingual TRAIN is 867 English + 866 Swedish = 1,733 total examples. No two bilingual examples share an `alignment_id`.
+
+Check the generated counts:
+
+```bash
+wc -l data/processed/sv/train_*.jsonl
+```
+
+Verify the bilingual language mix and ID uniqueness:
+
+```bash
+uv run --locked --no-dev --no-sync python - <<'PY'
+import json
+from collections import Counter
+from pathlib import Path
+
+folder = Path("data/processed/sv")
+
+def rows(filename):
+    with (folder / filename).open(encoding="utf-8") as file:
+        return [json.loads(line) for line in file if line.strip()]
+
+en = rows("train_en.jsonl")
+sv = rows("train_sv.jsonl")
+bi = rows("train_bilingual.jsonl")
+ids = [str(row["alignment_id"]) for row in bi]
+
+print("English-only:", len(en))
+print("Swedish-only:", len(sv))
+print("Bilingual:", len(bi), Counter(row["language"] for row in bi))
+assert len(en) == len(sv) == len(bi)
+assert len(ids) == len(set(ids))
+print("Balanced training validation passed")
+PY
+```
+
+**Note:** The data preparation seed (`configs/data.yaml` → `split.seed`) determines the language choice within the bilingual dataset. The separate PEFT seed (`configs/peft.yaml` → `experiment.seed`) controls training randomness.
+
+**After rebalancing, retrain the bilingual adapter** because its training data has changed. English-only and Swedish-only adapters do not need retraining if their original files and settings are unchanged. Keep DEV and TEST evaluation data identical to previous runs; replace or clearly version stale bilingual evaluation results.
+
+## 3. Verify model cache
+
+The models are:
+
+```text
+Qwen/Qwen2.5-3B-Instruct
+utter-project/EuroLLM-9B-Instruct
+```
+
+If not already downloaded, cache them on a network-enabled node:
+
+```bash
+unset HF_HUB_OFFLINE
+uv run --locked --no-dev --no-sync python - <<'PY'
+from huggingface_hub import snapshot_download
+for model in ("Qwen/Qwen2.5-3B-Instruct", "utter-project/EuroLLM-9B-Instruct"):
+    print(model, snapshot_download(repo_id=model))
+PY
+```
+
+List cached model repositories:
+
+```bash
+find "${HF_HUB_CACHE:-$HF_HOME/hub}" -maxdepth 1 -type d -name 'models--*' \
+    -printf '%f\n' | sed 's/^models--//; s/--/\//g' | sort
+```
+
+A listed repository name does **not** guarantee a complete model download. Set `HF_HUB_OFFLINE=1` in GPU jobs only after the model and tokenizer load successfully from cache.
+
+## 4. Train and evaluate QLoRA
+
+The three PEFT conditions are English-only, Swedish-only (`target`), and bilingual. The training script reads the prepared files; **it should not perform balancing**. Remove any old balancing block from `scripts/run_peft_training.py`.
+
+Train using your current no-array Slurm job:
 
 ```bash
 sbatch jobs/run_peft_training.sh
 ```
 
-**After training completes**, evaluate on DEV using the same indices:
+After training, evaluate the adapters on DEV:
 
 ```bash
-
 sbatch jobs/run_peft_evaluation.sh dev
 ```
 
-The expected evaluation matrix is **five PEFT results per split**: English-only on EN/SV, Swedish-only on SV, and bilingual on EN/SV. Results are stored under `outputs/metrics/peft/dev/` and `outputs/predictions/peft/dev/`.
+Your current training job should iterate over the three conditions or call the entry point with separate `--condition` arguments; **do not introduce old Slurm array-index mappings**. If you only need to retrain bilingual, use a single-condition execution supported by your training job or call the Python entry point with `--language sv --condition bilingual` within an allocated GPU job.
 
-## 6. Select the five-shot examples
+There should be five PEFT evaluations per split: EN-only on EN/SV, SV-only on SV, and bilingual on EN/SV. W&B is optional according to `use_wandb` in `configs/peft.yaml`; it does not affect dataset preparation.
 
-Once English–Swedish TRAIN data is ready, select demonstrations:
+## 5. Select five-shot demonstrations
 
-```bash
-uv run --locked --no-dev --no-sync python scripts/run_prompting.py --language sv --select-ids
-```
-
-The selected alignment IDs must refer to the **same labeled pair** in `data/processed/sv/train_en.jsonl` and `data/processed/sv/train_sv.jsonl`. Copy the five printed IDs into `prompting.five_shot_ids` in `configs/prompting.yaml`, preserving their numeric/string types and order.
-
-## 7. Run prompting on DEV
+After TRAIN data is available:
 
 ```bash
-sbatch jobs/run_prompting.sh dev --language sv --sensitivity --models primary
-sbatch jobs/run_prompting.sh dev --language sv --sensitivity --models secondary
+uv run --locked --no-dev --no-sync python scripts/run_prompting.py --select-ids
 ```
 
-The full DEV matrix contains **32 prompting runs**: two models × English/Swedish inputs × zero/five-shot × four prompt variants. The variants are `default`, `paraphrase`, `no_format_example`, and `terse`.
+`prompting.py` now selects five aligned English–Swedish examples from TRAIN only. Enter those five IDs in `prompting.five_shot_ids` in `configs/prompting.yaml`. The IDs are shared across the English and Swedish versions. Rebalancing `train_bilingual.jsonl` does **not** change the English/Swedish TRAIN files or these demonstrations.
 
-Check the metric count after both jobs finish:
+## 6. Run prompting on DEV
 
 ```bash
-find outputs/metrics/prompting/dev -maxdepth 1 -name '*__sv__*.json' | wc -l
+sbatch jobs/run_prompting.sh dev --sensitivity --models primary
+sbatch jobs/run_prompting.sh dev --sensitivity --models secondary
 ```
 
-Expected: **32**.
+DEV prompting runs: 2 models × 2 input languages × zero/five-shot × 4 prompt variants = **32 configurations**. Use only DEV to choose the wording. The four variants are `default`, `paraphrase`, `no_format_example`, and `terse`.
 
-When prompts, demonstration IDs, generation settings, or parser rules have changed, do not reuse outdated evaluations through `--skip-existing`. Neutral is not part of the label space; an output of `[]` is malformed and scored as an empty prediction.
-
-## 8. Select the DEV prompting variants in Jupyter
-
-Open:
-
-```text
-notebooks/generate_report_results.ipynb
-```
-
-Use the project's Python environment as the Jupyter kernel, for example via VS Code Remote SSH with the repository `.venv`. Run **Sections 1–3** of the notebook **after all 32 prompting DEV runs are complete**.
-
-The notebook calculates mean DEV **Micro-F1** across English and Swedish for each prompt wording, breaks ties using mean sample Jaccard, and chooses **one variant per model and shot condition**. It stores the choice for both input languages in:
+Open `notebooks/generate_report_tables_simple.ipynb` and run its DEV selection cells. The selected wordings are saved to:
 
 ```text
 outputs/report/selected_prompt_variants_sv.json
 ```
 
-There are eight keys: Qwen/EuroLLM × English/Swedish × zero/five-shot, with the same chosen wording for both languages of a given model and shot condition. **TEST scores are not used to select the wording.**
+## 7. Final TEST evaluation
 
-The notebook checks whether a previously saved selection would change after TEST prompting has been generated. Resolve any inconsistency before replacing results.
-
-## 9. Run the final TEST evaluations
-
-Only begin after the selection JSON exists. Do not use `--sensitivity` or `--limit` on TEST.
-
-Prompting TEST:
+After the DEV-selected prompting variants are saved:
 
 ```bash
-sbatch jobs/run_prompting.sh test --language sv --models primary
-sbatch jobs/run_prompting.sh test --language sv --models secondary
-```
-
-PEFT TEST, after the trained adapters are available:
-
-```bash
+sbatch jobs/run_prompting.sh test --models primary
+sbatch jobs/run_prompting.sh test --models secondary
 sbatch jobs/run_peft_evaluation.sh test
 ```
 
-Once all evaluations finish, check the output counts:
+Expected: **8 prompting TEST** runs and **5 PEFT TEST** evaluations. Do not use TEST to choose the prompt wording, demonstrations, checkpoint, or training balance.
 
-```bash
-find outputs/metrics/prompting/test -maxdepth 1 -name '*__sv__*.json' | wc -l  # 8
-find outputs/metrics/peft/test -maxdepth 1 -name '*__sv__*.json' | wc -l       # 5
-```
+## 8. Report and checks
 
-The prompting jobs read `selected_prompt_variants_sv.json` and evaluate only the DEV-selected wording for each model, language, and shot condition.
+Run `notebooks/generate_report_tables_simple.ipynb` after all evaluations. It reads saved metrics and predictions, produces the report tables, and generates `outputs/report/sv_test_method_comparison.png`. It does not run model inference.
 
-## 10. Create the report tables and figure
+Use `notebooks/data_check.ipynb` to inspect the label distributions of TRAIN, DEV and TEST and the language composition of the three PEFT training datasets.
 
-Open `notebooks/generate_report_tables_simple.ipynb` and **run all cells from top to bottom**. The notebook reads the saved metrics JSON and prediction JSONL files; it does not load any model or perform inference.
-
-It displays these **pandas DataFrames**:
-
-| Variable | Contents |
-|---|---|
-| `table2` | Qwen TEST Micro-F1 with DEV in parentheses |
-| `table3` | Qwen TEST empty-answer rates and average predicted label counts |
-| `table5` | DEV malformed-output and strict-JSON rates for Qwen and EuroLLM |
-| `table4` | Short paired Micro-F1 bootstrap summary |
-| `table7` | Full paired Micro-F1 bootstrap comparisons |
-| `table4_jaccard` | Short paired sample-Jaccard bootstrap summary |
-
-The notebook also saves:
-
-```text
-outputs/report/sv_test_method_comparison.png
-```
-
-The figure shows actual **saved TEST Micro-F1** scores for Qwen prompting, Qwen PEFT, and EuroLLM prompting.
-
-Bootstrap results use **1,000 paired resamples** and seed 42. Each comparison matches predictions by `alignment_id` and verifies matching gold labels. If at least 80% of both runs overlap and at least 20 examples match, the comparison uses the shared examples; results with partial overlap are marked `†`. Otherwise the comparison is shown as `—`. A partial-overlap comparison describes only the shared subset, not necessarily the full TEST set.
-
-A consistency-check cell compares saved Micro-F1 against scores reconstructed from the prediction files.
-
-## 11. Monitor jobs and troubleshoot
+Cluster monitoring:
 
 ```bash
 squeue -u "$USER"
@@ -269,17 +232,4 @@ squeue -u "$USER"
 sacct -j <JOBID> --format=JobID,State,ExitCode
 ```
 
-| Problem | What to check |
-|---|---|
-| German jobs are launched | Verify the PEFT array mapping and select only Swedish tasks |
-| Five-shot selection requires German | Ensure the selector validates only the EN–SV training pair |
-| Missing demonstrations | Check five distinct aligned TRAIN IDs and their gold labels |
-| Missing EuroLLM runs | Confirm `role: secondary` and `--models secondary` |
-| Missing selection JSON | Complete 32 prompting DEV runs, then run notebook Sections 1–3 |
-| TEST prompting runs the wrong variant | Confirm the selection JSON exists and its keys match the prompting model names |
-| Different saved and recalculated Micro-F1 | Investigate stale metrics, stale prediction files, or changed parsing rules |
-| Bootstrap returns `—` or `†` | Check matching alignment IDs, example overlap, and gold labels |
-| No report figure | Complete 8 prompting and 5 PEFT TEST evaluations, then run the notebook |
-| Out of home disk space | Verify `HF_HOME`, `UV_CACHE_DIR`, and `TMPDIR` point to scratch |
-
-For the overall project description and current reporting outputs, see [README.md](README.md).
+If any code in your local repository still has old job names, or Slurm arrays, update it to match the current Swedish-only workflow before running the experiment.
